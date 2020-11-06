@@ -137,6 +137,10 @@ public:
 
     static void event_release(Event *event);
 
+    int event_pending(void);
+
+    Event *event_peek(void);
+
 private:
     template <typename Type> inline Type &get(void) const;
 

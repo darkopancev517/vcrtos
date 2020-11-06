@@ -68,4 +68,16 @@ void event_release(event_t *event)
     EventQueue::event_release(reinterpret_cast<Event *>(event));
 }
 
+int event_pending(event_queue_t *queue)
+{
+    EventQueue &event_queue = *static_cast<EventQueue *>(queue);
+    return event_queue.event_pending();
+}
+
+event_t *event_peek(event_queue_t *queue)
+{
+    EventQueue &event_queue = *static_cast<EventQueue *>(queue);
+    return event_queue.event_peek();
+}
+
 #endif // #if VCRTOS_CONFIG_THREAD_EVENT_ENABLE

@@ -756,6 +756,16 @@ void EventQueue::event_release(Event *event)
     event->list_node.next = NULL;
 }
 
+int EventQueue::event_pending(void)
+{
+    return (static_cast<Clist *>(&event_list))->count();
+}
+
+Event *EventQueue::event_peek(void)
+{
+    return reinterpret_cast<Event *>((static_cast<Clist *>(&event_list))->left_peek());
+}
+
 #endif // #if VCRTOS_CONFIG_THREAD_EVENT_ENABLE
 
 extern "C" void cpu_end_of_isr(void)

@@ -56,6 +56,10 @@ void event_loop(event_queue_t *queue);
 
 void event_release(event_t *event);
 
+int event_pending(event_queue_t *queue);
+
+event_t *event_peek(event_queue_t *queue);
+
 #ifdef __cplusplus
 }
 #endif
