@@ -27,10 +27,12 @@
 
 namespace vc {
 
-Thread *Thread::init(Instance &instances, char *stack, int size, unsigned priority, int flags,
+Thread *Thread::init(Instance &instances, char *allocated_stack, int size, unsigned priority, int flags,
                      thread_handler_func_t handler_func, void *arg, const char *name)
 {
     if (priority >= VCRTOS_CONFIG_THREAD_PRIORITY_LEVELS) return NULL;
+
+    char *stack = allocated_stack;
 
     int total_stack_size = size;
 
@@ -53,6 +55,7 @@ Thread *Thread::init(Instance &instances, char *stack, int size, unsigned priori
     if (size < 0)
     {
         // TODO: warning: stack size is to small
+        return NULL;
     }
 
     /* allocate thread control block (tcb) at the top of our stackspace */
@@ -457,16 +460,11 @@ void ThreadScheduler::yield(void)
 void ThreadScheduler::exit_current_active_thread(void)
 {
     (void) cpu_irq_disable();
-
     set_thread_scheduler(NULL, get_current_active_pid());
-
     decrement_numof_threads_in_scheduler();
-
     set_thread_status(get_current_active_thread(), THREAD_STATUS_STOPPED);
-
     set_current_active_thread(NULL);
-
-    cpu_switch_context_exit();
+    // Note: user need to call cpu_switch_context_exit() after this function
 }
 
 const char *ThreadScheduler::thread_status_to_string(thread_status_t status)

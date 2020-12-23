@@ -43,7 +43,7 @@ extern uint64_t instance_raw[];
 class Thread : public thread_t
 {
 public:
-    static Thread *init(Instance &instances, char *stack, int size, unsigned priority, int flags,
+    static Thread *init(Instance &instances, char *allocated_stack, int size, unsigned priority, int flags,
                         thread_handler_func_t handler_func, void *arg, const char *name);
 
     kernel_pid_t get_pid(void) { return pid; }

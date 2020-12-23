@@ -33,7 +33,7 @@ kernel_pid_t thread_create(void *instance,
 {
     Instance &instances = *static_cast<Instance *>(instance);
     Thread *thread = Thread::init(instances, stack, size, priority, flags, func, arg, name);
-    return thread->get_pid();
+    return (thread) ? thread->get_pid() : KERNEL_PID_UNDEF;
 }
 
 int thread_scheduler_get_context_switch_request(void *instance)
