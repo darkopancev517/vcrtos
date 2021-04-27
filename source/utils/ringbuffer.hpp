@@ -35,31 +35,20 @@ public:
     }
 
     int add_one(char byte);
-
     unsigned add(const char *buf, unsigned size);
-
-    int get_one(void);
-
+    int get_one();
     unsigned get(char *buf, unsigned size);
-
     unsigned remove(unsigned size);
-
-    int is_empty(void) { return _avail == 0; }
-
-    int is_full(void) { return _avail == _size; }
-
-    unsigned int free(void) { return _size - _avail; }
-
-    unsigned int avail(void) { return _avail; }
-
-    int peek_one(void);
-
+    int is_empty() { return _avail == 0; }
+    int is_full() { return _avail == _size; }
+    unsigned int free() { return _size - _avail; }
+    unsigned int avail() { return _avail; }
+    int peek_one();
     unsigned peek(char *buf, unsigned size);
 
 private:
     void add_tail(char byte);
-
-    char get_head(void);
+    char get_head();
 
     char *_buf;
     unsigned int _size;

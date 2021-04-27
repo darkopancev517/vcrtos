@@ -36,49 +36,39 @@ public:
         mask = size - 1;
     }
 
-    unsigned int avail(void) { return write_count - read_count; }
+    unsigned int avail() { return write_count - read_count; }
+    unsigned int get_read_count() { return read_count; }
+    unsigned int get_write_count() { return write_count; }
+    unsigned int get_mask() { return mask; }
+    int get_unsafe() { return static_cast<int>(read_count++ & mask); }
+    int put_unsafe() { return static_cast<int>(write_count++ & mask); }
+    int full() { return avail() > mask; }
 
-    unsigned int get_read_count(void) { return read_count; }
-
-    unsigned int get_write_count(void) { return write_count; }
-
-    unsigned int get_mask(void) { return mask; }
-
-    int get_unsafe(void) { return static_cast<int>(read_count++ & mask); }
-
-    int put_unsafe(void) { return static_cast<int>(write_count++ & mask); }
-
-    int full(void) { return avail() > mask; }
-
-    int get(void)
+    int get()
     {
         if (avail())
         {
             return static_cast<int>(read_count++ & mask);
         }
-
         return -1;
     }
 
-    int peek(void)
+    int peek()
     {
         if (avail())
         {
             return static_cast<int>(read_count & mask);
         }
-
         return -1;
     }
 
-    int put(void)
+    int put()
     {
         int available = avail();
-
         if (available <= static_cast<int>(mask))
         {
             return static_cast<int>(write_count++ & mask);
         }
-
         return -1;
     }
 };

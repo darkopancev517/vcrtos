@@ -25,7 +25,7 @@ namespace vc {
 class List : public list_node_t
 {
 public:
-    List(void) { next = NULL; }
+    List() { next = nullptr; }
 
     void add(List *node)
     {
@@ -33,15 +33,13 @@ public:
         this->next = node;
     }
 
-    List *remove_head(void)
+    List *remove_head()
     {
         List *head = static_cast<List *>(this->next);
-
         if (head)
         {
             this->next = head->next;
         }
-
         return head;
     }
 
@@ -56,7 +54,6 @@ public:
             }
             list = static_cast<List *>(list->next);
         }
-
         return static_cast<List *>(list->next);
     }
 };

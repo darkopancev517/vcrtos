@@ -24,7 +24,7 @@
 namespace vc {
 namespace utils {
 
-Heap::Heap(void)
+Heap::Heap()
 {
     Block &super = block_at(SUPER_BLOCK_OFFSET);
     super.set_size(SUPER_BLOCK_SIZE);

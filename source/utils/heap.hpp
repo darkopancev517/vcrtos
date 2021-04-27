@@ -31,11 +31,10 @@ class Block
     friend class Heap;
 
 public:
-    uint16_t get_size(void) const { return _size; }
-
+    uint16_t get_size() const { return _size; }
     void set_size(uint16_t size) { _size = size; }
 
-    uint16_t get_next(void) const
+    uint16_t get_next() const
     {
         return *reinterpret_cast<const uint16_t *>(
             reinterpret_cast<const void *>(reinterpret_cast<const uint8_t *>(this) + sizeof(_size) + _size));
@@ -47,13 +46,10 @@ public:
             reinterpret_cast<void *>(reinterpret_cast<uint8_t *>(this) + sizeof(_size) + _size)) = next;
     }
 
-    void *get_pointer(void) { return &_memory; }
-
-    uint16_t get_left_next(void) const { return *(&_size - 1); }
-
-    bool is_left_free(void) const { return get_left_next() != 0; }
-
-    bool is_free(void) const { return _size != GUARD_BLOCK_SIZE && get_next() != 0; }
+    void *get_pointer() { return &_memory; }
+    uint16_t get_left_next() const { return *(&_size - 1); }
+    bool is_left_free() const { return get_left_next() != 0; }
+    bool is_free() const { return _size != GUARD_BLOCK_SIZE && get_next() != 0; }
 
 private:
     enum
@@ -69,13 +65,12 @@ private:
 class Heap
 {
 public:
-    Heap(void);
+    Heap();
 
     void *calloc(size_t count, size_t size);
-
     void free(void *ptr);
 
-    bool is_clean(void) const
+    bool is_clean() const
     {
         Heap &self = *const_cast<Heap *>(this);
         const Block &super = self.block_super();
@@ -83,9 +78,8 @@ public:
         return super.get_next() == self.block_offset(first) && first.get_size() == FIRST_BLOCK_SIZE;
     }
 
-    size_t get_capacity(void) const { return FIRST_BLOCK_SIZE; }
-
-    size_t get_free_size(void) const { return _memory.mfree_size; }
+    size_t get_capacity() const { return FIRST_BLOCK_SIZE; }
+    size_t get_free_size() const { return _memory.mfree_size; }
 
 private:
     enum
@@ -111,7 +105,7 @@ private:
         return block_at(offset);
     }
 
-    Block &block_super(void) { return block_at(SUPER_BLOCK_OFFSET); }
+    Block &block_super() { return block_at(SUPER_BLOCK_OFFSET); }
 
     Block &block_next(const Block &block) { return block_at(block.get_next()); }
 

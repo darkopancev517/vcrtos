@@ -15,14 +15,13 @@
  * Authors: Darko Pancev <darko.pancev@vertexcom.com>
  */
 
-#include "core/instance.hpp"
 #include "utils/isrpipe.hpp"
 
 namespace vc {
 namespace utils {
 
-Isrpipe::Isrpipe(Instance &instance, char *buf, unsigned int size)
-    : _mutex(instance)
+Isrpipe::Isrpipe(char *buf, unsigned int size)
+    : _mutex()
     , _tsrb(buf, size)
 {
 }
@@ -30,16 +29,13 @@ Isrpipe::Isrpipe(Instance &instance, char *buf, unsigned int size)
 int Isrpipe::write_one(char byte)
 {
     int res = get_tsrb().add_one(byte);
-
     get_mutex().unlock();
-
     return res;
 }
 
 int Isrpipe::read(char *buf, size_t size)
 {
     int res;
-
 #ifdef UNITTEST
     if (!(res = get_tsrb().get(buf, size)))
     {
@@ -51,11 +47,10 @@ int Isrpipe::read(char *buf, size_t size)
         get_mutex().lock();
     }
 #endif
-
     return res;
 }
 
-int Tsrb::get_one(void)
+int Tsrb::get_one()
 {
     if (!is_empty())
     {
@@ -70,26 +65,22 @@ int Tsrb::get_one(void)
 int Tsrb::get(char *buf, size_t size)
 {
     size_t tmp = size;
-
     while (tmp && !is_empty())
     {
         *buf++ = pop();
         tmp--;
     }
-
     return (size - tmp);
 }
 
 int Tsrb::drop(size_t size)
 {
     size_t tmp = size;
-
     while (tmp && !is_empty())
     {
         pop();
         tmp--;
     }
-
     return (size - tmp);
 }
 
@@ -109,13 +100,11 @@ int Tsrb::add_one(char byte)
 int Tsrb::add(const char *buf, size_t size)
 {
     size_t tmp = size;
-
     while (tmp && !is_full())
     {
         push(*buf++);
         tmp--;
     }
-
     return (size - tmp);
 }
 

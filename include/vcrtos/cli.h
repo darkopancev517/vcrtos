@@ -33,14 +33,10 @@ typedef struct cli_command
     void (*command_handler_func)(int argc, char *argv[]);
 } cli_command_t;
 
-void vccli_uart_init(void *instance);
-
+void vccli_uart_init();
 void vccli_set_user_commands(const cli_command_t *user_commands, uint8_t length);
-
 void vccli_output_bytes(const uint8_t *bytes, uint8_t length);
-
 void vccli_output_format(const char *fmt, ...);
-
 void vccli_output(const char *string, uint16_t length);
 
 #ifdef __cplusplus

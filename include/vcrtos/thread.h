@@ -30,6 +30,9 @@
 extern "C" {
 #endif
 
+extern void *sched_active_thread;
+extern int16_t sched_active_pid;
+
 typedef void *(*thread_handler_func_t)(void *arg);
 
 typedef enum
@@ -73,69 +76,46 @@ typedef struct thread
     char *stack_start;
     const char *name;
     int stack_size;
-#if VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    void *instance;
-#endif
 } thread_t;
 
 #define THREAD_FLAGS_CREATE_SLEEPING (0x1)
 #define THREAD_FLAGS_CREATE_WOUT_YIELD (0x2)
 #define THREAD_FLAGS_CREATE_STACKMARKER (0x4)
 
-kernel_pid_t thread_create(void *instance,
-                           char *stack,
+kernel_pid_t thread_create(char *stack,
                            int size,
-                           char priority,
-                           int flags,
                            thread_handler_func_t func,
+                           const char *name,
+                           char priority,
                            void *arg,
-                           const char *name);
+                           int flags);
 
-int thread_scheduler_get_context_switch_request(void *instance);
-
-void thread_scheduler_set_context_switch_request(void *instance, unsigned state);
-
-void thread_scheduler_run(void *instance);
-
-void thread_scheduler_set_status(void *instance, thread_t *thread, thread_status_t status);
-
-void thread_scheduler_switch(void *instance, uint8_t priority);
-
-void thread_exit(void *instance);
-
+void thread_scheduler_init();
+int thread_scheduler_is_initialized();
+int thread_scheduler_requested_context_switch();
+void thread_scheduler_context_switch_request(unsigned state);
+void thread_scheduler_run();
+void thread_scheduler_set_status(thread_t *thread, thread_status_t status);
+void thread_scheduler_switch(uint8_t priority);
+void thread_exit();
 int thread_pid_is_valid(kernel_pid_t pid);
-
-void thread_yield(void *instance);
-
-thread_t *thread_current(void *instance);
-
-void thread_sleep(void *instance);
-
-int thread_wakeup(void *instance, kernel_pid_t pid);
-
-kernel_pid_t thread_current_pid(void *instance);
-
-thread_t *thread_get_from_scheduler(void *instance, kernel_pid_t pid);
-
-uint64_t thread_get_runtime_ticks(void *instance, kernel_pid_t pid);
-
+void thread_yield();
+thread_t *thread_current();
+void thread_sleep();
+int thread_wakeup(kernel_pid_t pid);
+kernel_pid_t thread_current_pid();
+thread_t *thread_get_from_scheduler(kernel_pid_t pid);
+uint64_t thread_get_runtime_ticks(kernel_pid_t pid);
 const char *thread_status_to_string(thread_status_t status);
-
 uintptr_t thread_measure_stack_free(char *stack);
-
-unsigned thread_get_schedules_stat(void *instance, kernel_pid_t pid);
+uint32_t thread_get_schedules_stat(kernel_pid_t pid);
 
 char *thread_arch_stack_init(thread_handler_func_t func, void *arg, void *stack_start, int size);
-
-void thread_arch_stack_print(void);
-
-int thread_arch_isr_stack_usage(void);
-
-void *thread_arch_isr_stack_pointer(void);
-
-void *thread_arch_isr_stack_start(void);
-
-void thread_arch_yield_higher(void);
+void thread_arch_stack_print();
+int thread_arch_isr_stack_usage();
+void *thread_arch_isr_stack_pointer();
+void *thread_arch_isr_stack_start();
+void thread_arch_yield_higher();
 
 #ifdef __cplusplus
 }

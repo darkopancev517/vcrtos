@@ -25,58 +25,48 @@ namespace utils {
 void RingBuffer::add_tail(char byte)
 {
     unsigned pos = _start + _avail++;
-
     if (pos >= _size)
     {
         pos -= _size;
     }
-
     _buf[pos] = byte;
 }
 
-char RingBuffer::get_head(void)
+char RingBuffer::get_head()
 {
     char result = _buf[_start];
-
     if ((--_avail == 0) || (++_start == _size))
     {
         _start = 0;
     }
-
     return result;
 }
 
 int RingBuffer::add_one(char byte)
 {
     int result = -1;
-
     if (is_full())
     {
         result = (unsigned char)get_head();
     }
-
     add_tail(byte);
-
     return result;
 }
 
 unsigned RingBuffer::add(const char *buf, unsigned size)
 {
     unsigned i;
-
     for (i = 0; i < size; i++)
     {
         if (is_full())
-        {
             break;
-        }
+
         add_tail(buf[i]);
     }
-
     return i;
 }
 
-int RingBuffer::get_one(void)
+int RingBuffer::get_one()
 {
     if (!is_empty())
     {
@@ -91,9 +81,7 @@ int RingBuffer::get_one(void)
 unsigned RingBuffer::get(char *buf, unsigned size)
 {
     if (size > _avail)
-    {
         size = _avail;
-    }
 
     if (size > 0)
     {
@@ -121,7 +109,6 @@ unsigned RingBuffer::get(char *buf, unsigned size)
 
         _avail -= size;
     }
-
     return size;
 }
 
@@ -147,7 +134,7 @@ unsigned RingBuffer::remove(unsigned size)
     return size;
 }
 
-int RingBuffer::peek_one(void)
+int RingBuffer::peek_one()
 {
     RingBuffer rb = *this;
     return rb.get_one();

@@ -20,14 +20,9 @@
 static int is_cpu_in_isr = 0;
 static int is_pendsv_interrupt_triggered = 0;
 
-void test_helper_set_cpu_in_isr(void)
+void test_helper_set_cpu_in_isr(int val)
 {
-    is_cpu_in_isr = 1;
-}
-
-void test_helper_reset_cpu_in_isr(void)
-{
-    is_cpu_in_isr = 0;
+    is_cpu_in_isr = val;
 }
 
 int test_helper_is_pendsv_interrupt_triggered(void)

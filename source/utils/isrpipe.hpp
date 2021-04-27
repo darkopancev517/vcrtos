@@ -27,8 +27,6 @@
 
 namespace vc {
 
-class Instance;
-
 namespace utils {
 
 class Tsrb
@@ -43,27 +41,17 @@ public:
         vcassert((size != 0) && ((size & (~size + 1)) == size));
     }
 
-    int get_one(void);
-
+    int get_one();
     int get(char *buf, size_t size);
-
     int drop(size_t size);
-
     int add_one(char byte);
-
     int add(const char *buf, size_t size);
-
-    int avail(void) { return _writes - _reads; }
-
-    int is_empty(void) const { return _reads == _writes; }
-
-    int is_full(void) const { return (_writes - _reads) == _size; }
-
-    int free(void) { return (_size - _writes + _reads); }
-
+    int avail() { return _writes - _reads; }
+    int is_empty() const { return _reads == _writes; }
+    int is_full() const { return (_writes - _reads) == _size; }
+    int free() { return (_size - _writes + _reads); }
     void push(char byte) { _buf[_writes++ & (_size - 1)] = byte; }
-
-    char pop(void) { return _buf[_reads++ & (_size - 1)]; }
+    char pop() { return _buf[_reads++ & (_size - 1)]; }
 
 private:
     char *_buf;
@@ -75,15 +63,12 @@ private:
 class Isrpipe
 {
 public:
-    explicit Isrpipe(Instance &instance, char *buf, unsigned int size);
+    explicit Isrpipe(char *buf, unsigned int size);
 
     int write_one(char byte);
-
     int read(char *buf, size_t size);
-
-    Mutex &get_mutex(void) { return _mutex; }
-
-    Tsrb &get_tsrb(void) { return _tsrb; }
+    Mutex &get_mutex() { return _mutex; }
+    Tsrb &get_tsrb() { return _tsrb; }
 
 private:
     Mutex _mutex;
@@ -93,8 +78,8 @@ private:
 class UartIsrpipe : public Isrpipe
 {
 public:
-    explicit UartIsrpipe(Instance &instance)
-        : Isrpipe(instance, _buf, sizeof(_buf))
+    UartIsrpipe()
+        : Isrpipe(_buf, sizeof(_buf))
     {
     }
 

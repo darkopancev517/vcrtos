@@ -2,16 +2,12 @@ set(unittest-includes ${unittest-includes}
 )
 
 set(unittest-sources
-    ../../source/core/instance.cpp
     ../../source/core/thread.cpp
-    ../../source/core/mutex.cpp
     ../../source/core/msg.cpp
     ../../source/core/assert_failure.c
-    ../../source/core/api/mutex_api.cpp
-    ../../source/core/api/msg_api.cpp
     ../../source/core/api/thread_api.cpp
+    ../../source/core/api/msg_api.cpp
     stubs/cpu_stub.c
-    stubs/thread_stub.c
     stubs/thread_arch_stub.c
 )
 

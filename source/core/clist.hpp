@@ -29,7 +29,7 @@ namespace vc {
 class Clist : public List
 {
 public:
-    Clist(void) { next = NULL; }
+    Clist() { next = nullptr; }
 
     void right_push(Clist *node)
     {
@@ -42,7 +42,6 @@ public:
         {
             node->next = node;
         }
-
         this->next = node;
     }
 
@@ -60,7 +59,7 @@ public:
         }
     }
 
-    Clist *left_pop(void)
+    Clist *left_pop()
     {
         if (this->next)
         {
@@ -68,7 +67,7 @@ public:
 
             if (this->next == first)
             {
-                this->next = NULL;
+                this->next = nullptr;
             }
             else
             {
@@ -79,11 +78,11 @@ public:
         }
         else
         {
-            return NULL;
+            return nullptr;
         }
     }
 
-    void left_pop_right_push(void)
+    void left_pop_right_push()
     {
         if (this->next)
         {
@@ -91,19 +90,19 @@ public:
         }
     }
 
-    Clist *left_peek(void)
+    Clist *left_peek()
     {
         if (this->next)
         {
             return static_cast<Clist *>(this->next->next);
         }
 
-        return NULL;
+        return nullptr;
     }
 
-    Clist *right_peek(void) { return static_cast<Clist *>(this->next); }
+    Clist *right_peek() { return static_cast<Clist *>(this->next); }
 
-    Clist *right_pop(void)
+    Clist *right_pop()
     {
         if (this->next)
         {
@@ -118,7 +117,7 @@ public:
         }
         else
         {
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -127,9 +126,7 @@ public:
         Clist *pos = static_cast<Clist *>(this->next);
 
         if (!pos)
-        {
-            return NULL;
-        }
+            return nullptr;
 
         do
         {
@@ -142,7 +139,7 @@ public:
 
         } while (pos != this->next);
 
-        return NULL;
+        return nullptr;
     }
 
     Clist *find(const Clist *node)
@@ -155,7 +152,7 @@ public:
         }
         else
         {
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -183,15 +180,13 @@ public:
                 }
             }
         }
-
-        return NULL;
+        return nullptr;
     }
 
-    size_t count(void)
+    size_t count()
     {
         Clist *node = static_cast<Clist *>(this->next);
         size_t cnt  = 0;
-
         if (node)
         {
             do
@@ -200,7 +195,6 @@ public:
                 ++cnt;
             } while (node != this->next);
         }
-
         return cnt;
     }
 };

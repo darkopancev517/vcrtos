@@ -17,18 +17,15 @@
 
 #include <vcrtos/rmutex.h>
 #include <vcrtos/thread.h>
-#include <vcrtos/instance.h>
 #include <vcrtos/assert.h>
 
 static int _lock(rmutex_t *rmutex, int trylock)
 {
     kernel_pid_t owner;
-
     if (mutex_try_lock(&rmutex->mutex) == 0)
     {
         owner = atomic_load_explicit(&rmutex->owner, memory_order_relaxed);
-
-        if (owner != thread_current_pid(rmutex->instance))
+        if (owner != thread_current_pid())
         {
             if (trylock)
             {
@@ -40,22 +37,14 @@ static int _lock(rmutex_t *rmutex, int trylock)
             }
         }
     }
-
-    atomic_store_explicit(&rmutex->owner, thread_current_pid(rmutex->instance), memory_order_relaxed);
-
+    atomic_store_explicit(&rmutex->owner, thread_current_pid(), memory_order_relaxed);
     rmutex->refcount++;
-
     return 1;
 }
 
-void rmutex_init(void *instance, rmutex_t *rmutex)
+void rmutex_init(rmutex_t *rmutex)
 {
-    mutex_init(instance, &rmutex->mutex);
-#if VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    rmutex->instance = instance;
-#else
-    rmutex->instance = instance_get();
-#endif
+    mutex_init(&rmutex->mutex);
     rmutex->refcount = 0;
     rmutex->owner = ATOMIC_VAR_INIT(KERNEL_PID_UNDEF);
 }
@@ -72,16 +61,12 @@ int rmutex_trylock(rmutex_t *rmutex)
 
 void rmutex_unlock(rmutex_t *rmutex)
 {
-    vcassert(atomic_load_explicit(&rmutex->owner, memory_order_relaxed) == thread_current_pid(rmutex->instance));
-
+    vcassert(atomic_load_explicit(&rmutex->owner, memory_order_relaxed) == thread_current_pid());
     vcassert(rmutex->refcount > 0);
-
     rmutex->refcount--;
-
     if (rmutex->refcount == 0)
     {
         atomic_store_explicit(&rmutex->owner, KERNEL_PID_UNDEF, memory_order_relaxed);
-
         mutex_unlock(&rmutex->mutex);
     }
 }

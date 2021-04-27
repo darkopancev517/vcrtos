@@ -15,7 +15,6 @@
  * Authors: Darko Pancev <darko.pancev@vertexcom.com>
  */
 
-#include "core/instance.hpp"
 #include "core/mutex.hpp"
 #include "core/thread.hpp"
 
@@ -23,139 +22,103 @@ namespace vc {
 
 int Mutex::set_lock(int blocking)
 {
-    unsigned state = cpu_irq_disable();
-
-    if (queue.next == NULL)
+    unsigned irqmask = cpu_irq_disable();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    if (queue.next == nullptr)
     {
         /* mutex was unlocked */
         queue.next = MUTEX_LOCKED;
-
-        cpu_irq_restore(state);
-
+        cpu_irq_restore(irqmask);
         return 1;
     }
     else if (blocking)
     {
-        Thread *current_thread = get<ThreadScheduler>().get_current_active_thread();
-
-        get<ThreadScheduler>().set_thread_status(current_thread, THREAD_STATUS_MUTEX_BLOCKED);
-
+        Thread *current_thread = (Thread *)sched_active_thread;
+        scheduler->set_thread_status(current_thread, THREAD_STATUS_MUTEX_BLOCKED);
         if (queue.next == MUTEX_LOCKED)
         {
             queue.next = current_thread->get_runqueue_entry();
-            queue.next->next = NULL;
+            queue.next->next = nullptr;
         }
         else
         {
             current_thread->add_to_list(static_cast<List *>(&queue));
         }
-
-        cpu_irq_restore(state);
-
+        cpu_irq_restore(irqmask);
         ThreadScheduler::yield_higher_priority_thread();
-
         return 1;
     }
     else
     {
-        cpu_irq_restore(state);
+        cpu_irq_restore(irqmask);
         return 0;
     }
 }
 
-kernel_pid_t Mutex::peek(void)
+kernel_pid_t Mutex::peek()
 {
-    unsigned state = cpu_irq_disable();
-
-    if (queue.next == NULL)
+    unsigned irqmask = cpu_irq_disable();
+    if (queue.next == nullptr || queue.next == MUTEX_LOCKED)
     {
-        /* mutex was unlocked or no one waiting this mutex */
-        cpu_irq_restore(state);
+        cpu_irq_restore(irqmask);
         return KERNEL_PID_UNDEF;
     }
-
     List *head = (static_cast<List *>(queue.next));
-
     Thread *thread = Thread::get_thread_pointer_from_list_member(head);
-
-    return thread->get_pid();
+    return thread->pid;
 }
 
-void Mutex::unlock(void)
+void Mutex::unlock()
 {
-    unsigned state = cpu_irq_disable();
-
-    if (queue.next == NULL)
+    unsigned irqmask = cpu_irq_disable();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    if (queue.next == nullptr)
     {
         /* mutex was unlocked */
-        cpu_irq_restore(state);
+        cpu_irq_restore(irqmask);
         return;
     }
-
     if (queue.next == MUTEX_LOCKED)
     {
-        queue.next = NULL;
+        queue.next = nullptr;
         /* mutex was locked but no thread was waiting for it */
-        cpu_irq_restore(state);
+        cpu_irq_restore(irqmask);
         return;
     }
-
     List *next = (static_cast<List *>(&queue))->remove_head();
-
     Thread *thread = Thread::get_thread_pointer_from_list_member(next);
-
-    get<ThreadScheduler>().set_thread_status(thread, THREAD_STATUS_PENDING);
+    scheduler->set_thread_status(thread, THREAD_STATUS_PENDING);
 
     if (!queue.next)
-    {
         queue.next = MUTEX_LOCKED;
-    }
 
-    uint8_t thread_priority = thread->get_priority();
-
-    cpu_irq_restore(state);
-
-    get<ThreadScheduler>().context_switch(thread_priority);
+    cpu_irq_restore(irqmask);
+    scheduler->context_switch(thread->priority);
 }
 
-void Mutex::unlock_and_sleeping_current_thread(void)
+void Mutex::unlock_and_sleep()
 {
-    unsigned state = cpu_irq_disable();
-
+    unsigned irqmask = cpu_irq_disable();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
     if (queue.next)
     {
         if (queue.next == MUTEX_LOCKED)
         {
-            queue.next = NULL;
+            queue.next = nullptr;
         }
         else
         {
             List *next = (static_cast<List *>(&queue))->remove_head();
-
             Thread *thread = Thread::get_thread_pointer_from_list_member(next);
-
-            get<ThreadScheduler>().set_thread_status(thread, THREAD_STATUS_PENDING);
+            scheduler->set_thread_status(thread, THREAD_STATUS_PENDING);
 
             if (!queue.next)
-            {
                 queue.next = MUTEX_LOCKED;
-            }
         }
     }
 
-    cpu_irq_restore(state);
-
-    get<ThreadScheduler>().sleeping_current_thread();
-}
-
-template <> inline Instance &Mutex::get(void) const
-{
-    return get_instance();
-}
-
-template <typename Type> inline Type &Mutex::get(void) const
-{
-    return get_instance().get<Type>();
+    cpu_irq_restore(irqmask);
+    scheduler->sleep();
 }
 
 } // namespace vc

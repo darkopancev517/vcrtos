@@ -17,62 +17,52 @@
 
 #include <vcrtos/msg.h>
 
-#include "core/instance.hpp"
 #include "core/msg.hpp"
+#include "core/new.hpp"
 
 using namespace vc;
 
-void msg_init(void *instance, msg_t *msg)
+void msg_init(msg_t *msg)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    Msg &m = *static_cast<Msg *>(msg);
-    m.init(instances);
+    msg = new (msg) Msg();
 }
 
 int msg_receive(msg_t *msg)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.receive();
+    return (*static_cast<Msg *>(msg)).receive();
+}
+
+int msg_try_receive(msg_t *msg)
+{
+    return (*static_cast<Msg *>(msg)).try_receive();
 }
 
 int msg_send(msg_t *msg, kernel_pid_t pid)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.send(pid);
+    return (*static_cast<Msg *>(msg)).send(pid);
 }
 
 int msg_try_send(msg_t *msg, kernel_pid_t pid)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.try_send(pid);
+    return (*static_cast<Msg *>(msg)).try_send(pid);
 }
 
 int msg_send_receive(msg_t *msg, msg_t *reply, kernel_pid_t pid)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.send_receive(static_cast<Msg *>(reply), pid);
+    return (*static_cast<Msg *>(msg)).send_receive(static_cast<Msg *>(reply), pid);
 }
 
 int msg_send_to_self_queue(msg_t *msg)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.send_to_self_queue();
+    return (*static_cast<Msg *>(msg)).send_to_self_queue();
 }
 
 int msg_reply(msg_t *msg, msg_t *reply)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.reply(static_cast<Msg *>(reply));
+    return (*static_cast<Msg *>(msg)).reply(static_cast<Msg *>(reply));
 }
 
 int msg_reply_in_isr(msg_t *msg, msg_t *reply)
 {
-    Msg &m = *static_cast<Msg *>(msg);
-    return m.reply_in_isr(static_cast<Msg *>(reply));
-}
-
-void msg_active_thread_queue_print(void *instance)
-{
-    (void) instance;
-    // TODO:
+    return (*static_cast<Msg *>(msg)).reply_in_isr(static_cast<Msg *>(reply));
 }

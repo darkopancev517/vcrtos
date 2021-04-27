@@ -29,7 +29,7 @@ extern "C" {
 typedef struct scheduler_stat
 {
     uint32_t last_start;
-    unsigned int schedules;
+    uint32_t schedules;
     uint64_t runtime_ticks;
 } scheduler_stat_t;
 

@@ -17,9 +17,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/instance.hpp"
-#include "core/code_utils.h"
-#include "core/mutex.hpp"
+#include "core/thread.hpp"
 
 #include "test-helper.h"
 
@@ -27,72 +25,28 @@ using namespace vc;
 
 class TestThread : public testing::Test
 {
-public:
-    void instance_reset(void)
-    {
-        memset(instance, 0, sizeof(Instance));
-        instance->after_init();
-    }
-
-protected:
-    Instance *instance;
+    protected:
 
     virtual void SetUp()
     {
-        instance = new Instance();
     }
 
     virtual void TearDown()
     {
-        delete instance;
     }
 };
 
-class TestMultipleInstancesThread: public testing::Test
+TEST_F(TestThread, basicThreadTest)
 {
-protected:
-    Instance *instance1;
-    Instance *instance2;
+    ThreadScheduler *scheduler = &ThreadScheduler::init();
 
-    virtual void SetUp()
-    {
-        instance1 = new Instance();
-        instance2 = new Instance();
-    }
+    EXPECT_NE(scheduler, nullptr);
+    EXPECT_NE(scheduler, nullptr);
+    EXPECT_EQ(scheduler->numof_threads(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
-    virtual void TearDown()
-    {
-        delete instance1;
-        delete instance2;
-    }
-};
-
-TEST_F(TestThread, constructor_test)
-{
-    EXPECT_TRUE(instance);
-}
-
-TEST_F(TestMultipleInstancesThread, constructor_test)
-{
-    EXPECT_TRUE(instance1);
-    EXPECT_TRUE(instance2);
-}
-
-TEST_F(TestThread, basic_thread_init_test)
-{
-    EXPECT_TRUE(instance->is_initialized());
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
-
-    /**
-     * -------------------------------------------------------------------------
-     * [TEST CASE] make sure Thread class size is correct
-     * -------------------------------------------------------------------------
-     **/
-
-    EXPECT_EQ(sizeof(Thread), sizeof(thread_t));
+    EXPECT_EQ(ThreadScheduler::is_initialized(), 1);
 
     /**
      * -------------------------------------------------------------------------
@@ -104,88 +58,82 @@ TEST_F(TestThread, basic_thread_init_test)
 
     char stack1[128];
 
-    Thread *thread1 = Thread::init(*instance, stack1, sizeof(stack1), 15,
-                                   THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                   NULL, NULL, "thread1");
+    Thread *thread1 = Thread::init(stack1, sizeof(stack1), nullptr, "thread1");
 
     EXPECT_NE(thread1, nullptr);
-
     EXPECT_EQ(thread1->get_pid(), 1);
-    EXPECT_EQ(thread1->get_priority(), 15);
+    EXPECT_EQ(thread1->get_priority(), KERNEL_THREAD_PRIORITY_MAIN);
     EXPECT_EQ(thread1->get_name(), "thread1");
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 1);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(thread1->get_pid()), thread1);
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_EQ(scheduler->numof_threads(), 1);
+    EXPECT_EQ(scheduler->get_thread_from_container(thread1->get_pid()), thread1);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), thread1);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), thread1->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 1);
+    EXPECT_EQ(sched_active_thread, thread1);
+    EXPECT_EQ(sched_active_pid, thread1->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 1);
 
     /**
      * -------------------------------------------------------------------------
-     * [TEST CASE] creat new thread and exit current active thread
+     * [TEST CASE] create new thread and exit current active thread
      * -------------------------------------------------------------------------
      **/
 
     char stack2[128];
 
-    Thread *thread2 = Thread::init(*instance, stack2, sizeof(stack2), 14,
-                                   THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                   NULL, NULL, "thread2");
+    Thread *thread2 = Thread::init(stack2, sizeof(stack2), nullptr, "thread2", KERNEL_THREAD_PRIORITY_MAIN - 1);
 
     EXPECT_NE(thread2, nullptr);
-
     EXPECT_EQ(thread2->get_pid(), 2);
-    EXPECT_EQ(thread2->get_priority(), 14);
+    EXPECT_EQ(thread2->get_priority(), KERNEL_THREAD_PRIORITY_MAIN - 1);
     EXPECT_EQ(thread2->get_name(), "thread2");
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), thread2);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), thread2->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
+    EXPECT_EQ(sched_active_thread, thread2);
+    EXPECT_EQ(sched_active_pid, thread2->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 2);
 
-    /* exit current active thread */
+    // Exit current active thread
 
-    instance->get<ThreadScheduler>().exit_current_active_thread();
+    scheduler->exit();
+    cpu_switch_context_exit();
 
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_STOPPED);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), thread1);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), thread1->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 1);
+    EXPECT_EQ(sched_active_thread, thread1);
+    EXPECT_EQ(sched_active_pid, thread1->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 1);
 
-    /* try to get thread that was removed from scheduler */
+    // Try to get removed thread from scheduler
 
-    Thread *thread = instance->get<ThreadScheduler>().get_thread_from_scheduler(thread2->get_pid());
+    Thread *thread = scheduler->get_thread_from_container(thread2->get_pid());
 
-    EXPECT_EQ(thread, nullptr); /* we will get null */
+    EXPECT_EQ(thread, nullptr);
 }
 
-TEST_F(TestThread, multiple_thread_test)
+TEST_F(TestThread, multipleThreadTest)
 {
-    instance_reset();
+    ThreadScheduler *scheduler = &ThreadScheduler::init();
 
-    EXPECT_TRUE(instance->is_initialized());
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_NE(scheduler, nullptr);
+    EXPECT_EQ(scheduler->numof_threads(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
     /**
      * -------------------------------------------------------------------------
@@ -197,48 +145,41 @@ TEST_F(TestThread, multiple_thread_test)
 
     char idle_stack[128];
 
-    Thread *idle_thread = Thread::init(*instance, idle_stack, sizeof(idle_stack), 15,
-                                       THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                       NULL, NULL, "idle");
+    Thread *idle_thread = Thread::init(idle_stack, sizeof(idle_stack), nullptr, "idle", KERNEL_THREAD_PRIORITY_IDLE);
 
     EXPECT_NE(idle_thread, nullptr);
-
     EXPECT_EQ(idle_thread->get_pid(), 1);
-    EXPECT_EQ(idle_thread->get_priority(), 15);
+    EXPECT_EQ(idle_thread->get_priority(), KERNEL_THREAD_PRIORITY_IDLE);
     EXPECT_EQ(idle_thread->get_name(), "idle");
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
     char main_stack[128];
 
-    Thread *main_thread = Thread::init(*instance, main_stack, sizeof(main_stack), 7,
-                                       THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                       NULL, NULL, "main");
+    Thread *main_thread = Thread::init(main_stack, sizeof(main_stack), nullptr, "main");
 
     EXPECT_NE(main_thread, nullptr);
-
     EXPECT_EQ(main_thread->get_pid(), 2);
-    EXPECT_EQ(main_thread->get_priority(), 7);
+    EXPECT_EQ(main_thread->get_priority(), KERNEL_THREAD_PRIORITY_MAIN);
     EXPECT_EQ(main_thread->get_name(), "main");
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(idle_thread->get_pid()), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(main_thread->get_pid()), main_thread);
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_EQ(scheduler->numof_threads(), 2);
+    EXPECT_EQ(scheduler->get_thread_from_container(idle_thread->get_pid()), idle_thread);
+    EXPECT_EQ(scheduler->get_thread_from_container(main_thread->get_pid()), main_thread);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), main_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), main_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
+    EXPECT_EQ(sched_active_thread, main_thread);
+    EXPECT_EQ(sched_active_pid, main_thread->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 2);
 
-    /* Note: at this point "main" thread is in running state and "idle" thread
-     * is in pending state */
+    // At this point "main" thread alread in running state as expected
 
     /**
      * -------------------------------------------------------------------------
@@ -248,224 +189,59 @@ TEST_F(TestThread, multiple_thread_test)
      * -------------------------------------------------------------------------
      **/
 
-    instance->get<ThreadScheduler>().set_thread_status(main_thread, THREAD_STATUS_RECEIVE_BLOCKED);
+    scheduler->set_thread_status(main_thread, THREAD_STATUS_MUTEX_BLOCKED);
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(sched_active_thread, main_thread);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), main_thread);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), idle_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-
-    /* Note: at this point "main" thread is in blocked state and "idle" thread
-     * is in blocked state */
-
-    /**
-     * -----------------------------------------------------------------------------
-     * [TEST CASE] create new thread with higher priority than main and idle thread
-     * and yield immediately
-     * -----------------------------------------------------------------------------
-     **/
-
-    char task1_stack[128];
-
-    Thread *task1_thread = Thread::init(*instance, task1_stack, sizeof(task1_stack), 5,
-                                        THREAD_FLAGS_CREATE_STACKMARKER,
-                                        NULL, NULL, "task1");
-
-    EXPECT_NE(task1_thread, nullptr);
-
-    EXPECT_EQ(task1_thread->get_pid(), 3);
-    EXPECT_EQ(task1_thread->get_priority(), 5);
-    EXPECT_EQ(task1_thread->get_name(), "task1");
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_PENDING);
-
-    /* Note: at this point cpu should immediately yield the "task1" by
-     * triggering the PendSV interrupt and context switch from Isr is not requested */
-
-    EXPECT_TRUE(test_helper_is_pendsv_interrupt_triggered());
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
-
-    instance->get<ThreadScheduler>().run();
-
-    /* Note: after run the scheduler current active thread is expected to be
-     * "task1" */
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), task1_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), task1_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
-
-    instance->get<ThreadScheduler>().yield(); /* this function will run higher priority thread */
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    /* task1_thread already the highest priority thread currently running, so
-     * nothing change */
-
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(main_thread->get_status()), "bl rx");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(idle_thread->get_status()), "pending");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(task1_thread->get_status()), "running");
-
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(THREAD_STATUS_STOPPED), "stopped");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(THREAD_STATUS_SLEEPING), "sleeping");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(THREAD_STATUS_MUTEX_BLOCKED), "bl mutex");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(THREAD_STATUS_SEND_BLOCKED), "bl send");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(THREAD_STATUS_REPLY_BLOCKED), "bl reply");
-    ASSERT_STREQ(ThreadScheduler::thread_status_to_string(static_cast<thread_status_t>(100)), "unknown");
+    // At this point "idle" thread in running state as expected after "main"
+    // thread set to blocked state
 
     /**
      * -------------------------------------------------------------------------
-     * [TEST CASE] mutexes
+     * [TEST CASE] create new thread with higher priority than main and idle
+     * thread and yield immediately
      * -------------------------------------------------------------------------
      **/
 
-    Mutex mutex = Mutex(*instance);
+    char stack1[128];
 
-    mutex.lock();
+    Thread *thread1 = Thread::init(stack1, sizeof(stack1), nullptr, "thread1", KERNEL_THREAD_PRIORITY_MAIN - 1, nullptr, THREAD_FLAGS_CREATE_STACKMARKER);
 
-    /* Note: mutex was unlocked, set to locked for the first time,
-     * current active thread (task1_thread) will not change it's status until
-     * second time `mutex.lock()` is call */
+    // Create thread without 'THREAD_FLAGS_CREATE_WOUT_YIELD'
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
+    EXPECT_NE(thread1, nullptr);
+    EXPECT_EQ(thread1->get_pid(), 3);
+    EXPECT_EQ(thread1->get_priority(), KERNEL_THREAD_PRIORITY_MAIN - 1);
+    EXPECT_EQ(thread1->get_name(), "thread1");
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
+
+    // At this point cpu should immediately yield the "thread1" by triggering
+    // PendSV interrupt and context switch from Isr is not requested
+
+    EXPECT_EQ(test_helper_is_pendsv_interrupt_triggered(), 1);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+
+    scheduler->run();
+
+    // After run the scheduler current active thread is expected to be "thread1"
+
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    mutex.lock();
-
-    /* Note: mutex was locked, calling `mutex.lock()` for the second time in current active
-     * thread (task1_thread), now it will set current active thread status to mutex_blocked and
-     * yield to higher priority thread or remain thread */
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-
-    mutex.unlock();
-
-    /* Note: this will unlock `task1_thread` and set to pending status and yield
-     * to highest priority task */
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_PENDING);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    /* Note: set main_thread status to pending */
-
-    instance->get<ThreadScheduler>().set_thread_status(main_thread, THREAD_STATUS_PENDING);
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    instance->get<ThreadScheduler>().run();
-
-    mutex.lock(); // call this in task1_thread : HEAD
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-
-    mutex.lock(); // call this in main_thread
-
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
+
+    EXPECT_EQ(sched_active_thread, thread1);
+    EXPECT_EQ(sched_active_pid, thread1->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 3);
+
+    scheduler->yield();
+
+    // "thread1" alread the highest priority, nothing to be change is expected
+
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-
-    instance->get<ThreadScheduler>().run();
-
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-
-    /* Note: at this point both main_thread and task1_thread is in MUTEX LOCKED
-     * status. */
-
-    mutex.unlock();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_PENDING);
-
-    /* Note: task1_thread was in HEAD of the mutex queue, it will unlock this
-     * task first. */
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    /* Note: task1_thread have higher priority than idle_thread, so run
-     * task1_thread. */
-
-    mutex.unlock();
-
-    /* This will change main_thread status to pending */
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    /* Note: task1_thread has higher priority than main_thread, so keep running
-     * task1_thread. */
-
-    mutex.unlock();
-
-    /* No thread was waiting this mutex, set to NULL */
-
-    EXPECT_EQ(mutex.queue.next, nullptr);
-
-    /* Note: set main_thread status back to receive blocked */
-
-    instance->get<ThreadScheduler>().set_thread_status(main_thread, THREAD_STATUS_RECEIVE_BLOCKED);
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
 
     /**
      * -------------------------------------------------------------------------
@@ -473,59 +249,53 @@ TEST_F(TestThread, multiple_thread_test)
      * -------------------------------------------------------------------------
      **/
 
-    instance->get<ThreadScheduler>().sleeping_current_thread();
+    scheduler->sleep();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_SLEEPING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_SLEEPING);
 
-    /* Note: at this point both main_thread and task1_thread are in blocking
-     * status, so the next expected thread to run is idle_thread because
-     * idle_thread was in pending status. */
+    // Note: at this point both main_thread and thread1 are in blocking
+    // status, so the next expected thread to run is idle_thread because
+    // idle_thread was in pending status
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_SLEEPING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_SLEEPING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), idle_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
+    EXPECT_EQ(sched_active_thread, idle_thread);
+    EXPECT_EQ(sched_active_pid, idle_thread->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 3);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().wakeup_thread(main_thread->get_pid()), THREAD_STATUS_NOT_FOUND);
+    EXPECT_EQ(scheduler->wakeup_thread(main_thread->get_pid()), 0);
 
-    /* Note: because main_thread is not is SLEEPING status, we expect nothing to
-     * happen. */
+    // main_thread wasn't in sleeping state
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_SLEEPING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_SLEEPING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_SLEEPING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_SLEEPING);
 
-    /* Note: now we wakeup task1_thread which was in sleeping status */
+    // Wake up thread1 which was on sleeping status
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().wakeup_thread(task1_thread->get_pid()), true);
+    EXPECT_EQ(scheduler->wakeup_thread(thread1->get_pid()), 1);
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
 
-    /* Note: note that both idle_thread and task1_thread is in running status,
-     * that's okay, after calling ThreadScheduler::run() it will fixed threads
-     * status and run highest priority thread. In this case we expect idle_thread
-     * should be in PENDING status and task1_thread in RUNNING status */
+    scheduler->run();
 
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
 
     /**
      * -------------------------------------------------------------------------
@@ -533,27 +303,17 @@ TEST_F(TestThread, multiple_thread_test)
      * -------------------------------------------------------------------------
      **/
 
-    test_helper_set_cpu_in_isr(); // artificially set CPU in Isr
+    test_helper_set_cpu_in_isr(1);
 
-    instance->get<ThreadScheduler>().sleeping_current_thread();
+    scheduler->sleep();
 
-    /* Note: we can't sleep in Isr functions so nothing is expected to happen */
+    // We can't sleep in ISR function, nothing is expected to happen
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), task1_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), task1_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
-
-    test_helper_reset_cpu_in_isr();
+    test_helper_set_cpu_in_isr(0);
 
     /**
      * -------------------------------------------------------------------------
@@ -562,387 +322,224 @@ TEST_F(TestThread, multiple_thread_test)
      * -------------------------------------------------------------------------
      **/
 
-    test_helper_reset_pendsv_trigger(); /* reset the PendSV state */
+    test_helper_reset_pendsv_trigger();
 
-    EXPECT_FALSE(test_helper_is_pendsv_interrupt_triggered());
+    EXPECT_EQ(test_helper_is_pendsv_interrupt_triggered(), 0);
 
-    EXPECT_EQ(idle_thread->get_priority(), 15);
-    EXPECT_EQ(main_thread->get_priority(), 7);
-    EXPECT_EQ(task1_thread->get_priority(), 5); /* highest priority thread */
+    EXPECT_EQ(idle_thread->get_priority(), KERNEL_THREAD_PRIORITY_IDLE);
+    EXPECT_EQ(main_thread->get_priority(), KERNEL_THREAD_PRIORITY_MAIN);
+    EXPECT_EQ(thread1->get_priority(), KERNEL_THREAD_PRIORITY_MAIN - 1);
 
-    instance->get<ThreadScheduler>().context_switch(main_thread->get_priority());
+    scheduler->context_switch(main_thread->get_priority());
 
-    /* Note: because "main_thread" priority is lower than current running thread
-     * and current running thread is still in running status, nothing should
-     * happened */
+    // Note: because "main_thread" priority is lower than current running thread
+    // and current running thread is still in running status, nothing should
+    // happened
 
-    EXPECT_FALSE(test_helper_is_pendsv_interrupt_triggered());
+    EXPECT_EQ(test_helper_is_pendsv_interrupt_triggered(), 0);
 
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), task1_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), task1_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
+    EXPECT_EQ(sched_active_thread, thread1);
+    EXPECT_EQ(sched_active_pid, thread1->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 3);
 
     /**
-     * ------------------------------------------------------------------------------
-     * [TEST CASE] request context swicth inside Isr (Interrupt Service Routine) and
-     * current running thread is not in running status, it expected to see context
-     * switch is requested instead of yielding immediately to the next thread
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
+     * [TEST CASE] request context swicth inside Isr (Interrupt Service Routine)
+     * and current running thread is not in running status, it expected to see
+     * context switch is requested instead of yielding immediately to the next
+     * thread
+     * -------------------------------------------------------------------------
      **/
 
-    /* Note: set "task1" at blocked state first and is expected to be the next thread to
-     * run is "idle" thread */
+    // Set "thread1" at blocked state first and is expected to be the next
+    // thread to run is "idle" thread
 
-    instance->get<ThreadScheduler>().set_thread_status(task1_thread, THREAD_STATUS_RECEIVE_BLOCKED);
+    scheduler->set_thread_status(thread1, THREAD_STATUS_RECEIVE_BLOCKED);
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), idle_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
+    EXPECT_EQ(sched_active_thread, idle_thread);
+    EXPECT_EQ(sched_active_pid, idle_thread->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 3);
 
-    /* Note: at this point idle thread is run as expected, because other
-     * higher priority threads is in blocked state */
+    // At this point idle thread is run as expected, because other
+    // higher priority threads is in blocked state
 
-    test_helper_set_cpu_in_isr(); /* artificially set cpu in Isr */
+    test_helper_set_cpu_in_isr(1);
 
-    EXPECT_TRUE(cpu_is_in_isr());
+    EXPECT_EQ(cpu_is_in_isr(), 1);
 
-    instance->get<ThreadScheduler>().context_switch(task1_thread->get_priority());
+    scheduler->context_switch(thread1->get_priority());
 
-    EXPECT_FALSE(test_helper_is_pendsv_interrupt_triggered());
+    EXPECT_EQ(test_helper_is_pendsv_interrupt_triggered(), 0);
+    EXPECT_EQ(scheduler->requested_context_switch(), 1);
 
-    EXPECT_TRUE(instance->get<ThreadScheduler>().is_context_switch_requested());
+    // Because it is in ISR at this point context switch is requested instead
+    // of immediatelly yield to "thread1"
 
-    /* Note: because it is in Isr at this point context switch is requested
-     * instead of immediatelly yield to "task1" */
+    // In real cpu implementation, before exiting the Isr function it will
+    // check this flag and trigger the PendSV interrupt if context switch is
+    // requested, therefore after exiting Isr function PendSV interrupt will be
+    // triggered and run thread scheduler
 
-    /* Note: in real cpu implementation, before exiting the Isr function it will
-     * check this flag and trigger the PendSV interrupt if context switch is
-     * requested, therefore after exiting Isr function PendSV interrupt will be
-     * triggered and run thread scheduler */
+    // This equal to cpu_end_of_isr();
 
-    /* this equal to cpu_end_of_isr() */
+    if (scheduler->requested_context_switch())
+        cpu_trigger_pendsv_interrupt();
 
-    if (instance->get<ThreadScheduler>().is_context_switch_requested())
-    {
-        ThreadScheduler::yield_higher_priority_thread();
-    }
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
 
-    test_helper_reset_cpu_in_isr(); /* artificially out from Isr */
+    test_helper_set_cpu_in_isr(0);
 
-    EXPECT_FALSE(cpu_is_in_isr());
+    EXPECT_EQ(cpu_is_in_isr(), 0);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
 
-    /* Note: at this point the current active thread is still "idle" because "task1"
-     * is still in receive blocked state even though it was try to context
-     * switch to "task1", now try set "task1" to pending state and
-     * context switch to "task1" priority */
+    // At this point the current active thread is still "idle_thread" because
+    // "thread1" is still in receive blocked state even though it was try to
+    // context switch to "thread1", now try set "thread1" to pending state and
+    // context switch to "thread1" priority */
 
-    instance->get<ThreadScheduler>().set_thread_status(task1_thread, THREAD_STATUS_PENDING);
+    scheduler->set_thread_status(thread1, THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().context_switch(task1_thread->get_priority());
+    scheduler->context_switch(thread1->get_priority());
 
-    EXPECT_TRUE(test_helper_is_pendsv_interrupt_triggered());
+    EXPECT_EQ(test_helper_is_pendsv_interrupt_triggered(), 1);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
 
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
+    scheduler->run();
 
-    instance->get<ThreadScheduler>().run();
+    test_helper_reset_pendsv_trigger();
 
-    test_helper_reset_pendsv_trigger(); /* artificially reset PendSV state */
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
 
-    /* Note: at this point it succesfully switched to "task1" */
+    // At this point it succesfully switched to "thread1"
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), task1_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), task1_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
+    EXPECT_EQ(sched_active_thread, thread1);
+    EXPECT_EQ(sched_active_pid, thread1->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 3);
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] create a thread with highest priority but with THREAD_FLAGS
      * sleeping and not using THREAD_FLAGS create stack marker.
-     * ------------------------------------------------------------------------------
-     **/
-
-    char task2_stack[128];
-
-    /* Note: intentionally create thread with misaligment stack boundary on
-     * 16/32 bit boundary (&task2_stack[1]) will do the job */
-
-    Thread *task2_thread = Thread::init(*instance, &task2_stack[1], sizeof(task2_stack), 1,
-                                        THREAD_FLAGS_CREATE_SLEEPING,
-                                        NULL, NULL, "task2");
-
-    EXPECT_NE(task2_thread, nullptr);
-
-    EXPECT_EQ(task2_thread->get_pid(), 4);
-    EXPECT_EQ(task2_thread->get_priority(), 1);
-    EXPECT_EQ(task2_thread->get_name(), "task2");
-    EXPECT_EQ(task2_thread->get_status(), THREAD_STATUS_SLEEPING);
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task2_thread->get_status(), THREAD_STATUS_SLEEPING);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task2_thread->get_status(), THREAD_STATUS_SLEEPING);
-
-    instance->get<ThreadScheduler>().wakeup_thread(task2_thread->get_pid());
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(task2_thread->get_status(), THREAD_STATUS_RUNNING);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task1_thread->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(task2_thread->get_status(), THREAD_STATUS_RUNNING);
-}
-
-TEST_F(TestMultipleInstancesThread, multiple_instance_multithreads_test)
-{
-    EXPECT_TRUE(instance1->is_initialized());
-    EXPECT_TRUE(instance2->is_initialized());
-
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
-
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
-
-    /**
-     * -------------------------------------------------------------------------
-     * [TEST CASE] create multiple instances and multiple threads in those
-     * instances
      * -------------------------------------------------------------------------
      **/
 
-    /* Note: create "thread1" and "thread2" in instance1 */
+    char stack2[128];
 
-    char instance1_stack1[128];
-    char instance1_stack2[128];
+    // Intentionally create thread with misaligment stack boundary on
+    // 16/32 bit boundary (&stack2[1]) will do the job
 
-    Thread *instance1_thread1 = Thread::init(*instance1, instance1_stack1, sizeof(instance1_stack1), 15,
-                                             THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                             NULL, NULL, "thread1");
+    Thread *thread2 = Thread::init(&stack2[1], sizeof(stack2) - 4, nullptr, "thread2",
+                                   KERNEL_THREAD_PRIORITY_MAIN - 2,
+                                   nullptr, THREAD_FLAGS_CREATE_SLEEPING);
 
-    Thread *instance1_thread2 = Thread::init(*instance1, instance1_stack2, sizeof(instance1_stack2), 15,
-                                             THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                             NULL, NULL, "thread2");
+    EXPECT_NE(thread2, nullptr);
 
-    EXPECT_NE(instance1_thread1, nullptr);
-    EXPECT_NE(instance1_thread2, nullptr);
+    EXPECT_EQ(thread2->get_pid(), 4);
+    EXPECT_EQ(thread2->get_priority(), KERNEL_THREAD_PRIORITY_MAIN - 2);
+    EXPECT_EQ(thread2->get_name(), "thread2");
+    EXPECT_EQ(thread2->get_status(), THREAD_STATUS_SLEEPING);
 
-    EXPECT_EQ(instance1_thread1->get_pid(), 1);
-    EXPECT_EQ(instance1_thread1->get_priority(), 15);
-    EXPECT_EQ(instance1_thread1->get_name(), "thread1");
-    EXPECT_EQ(instance1_thread1->get_status(), THREAD_STATUS_PENDING);
+    scheduler->run();
 
-    EXPECT_EQ(instance1_thread2->get_pid(), 2);
-    EXPECT_EQ(instance1_thread2->get_priority(), 15);
-    EXPECT_EQ(instance1_thread2->get_name(), "thread2");
-    EXPECT_EQ(instance1_thread2->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(thread2->get_status(), THREAD_STATUS_SLEEPING);
 
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_thread_from_scheduler(1), instance1_thread1);
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_thread_from_scheduler(2), instance1_thread2);
-    EXPECT_FALSE(instance1->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    scheduler->wakeup_thread(thread2->get_pid());
 
-    instance1->get<ThreadScheduler>().run();
+    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
+    EXPECT_EQ(thread2->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance1_thread1->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(instance1_thread2->get_status(), THREAD_STATUS_PENDING);
+    scheduler->run();
 
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_current_active_thread(), instance1_thread1);
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_current_active_pid(), instance1_thread1->get_pid());
-    EXPECT_EQ(instance1->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-
-    /* Note: create "thread1" and "thread2" in instance2 */
-
-    char instance2_stack1[128];
-    char instance2_stack2[128];
-
-    Thread *instance2_thread1 = Thread::init(*instance2, instance2_stack1, sizeof(instance2_stack1), 15,
-                                             THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                             NULL, NULL, "thread1");
-
-    Thread *instance2_thread2 = Thread::init(*instance2, instance2_stack2, sizeof(instance2_stack2), 15,
-                                             THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                             NULL, NULL, "thread2");
-
-    EXPECT_NE(instance2_thread1, nullptr);
-    EXPECT_NE(instance2_thread2, nullptr);
-
-    EXPECT_EQ(instance2_thread1->get_pid(), 1);
-    EXPECT_EQ(instance2_thread1->get_priority(), 15);
-    EXPECT_EQ(instance2_thread1->get_name(), "thread1");
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_PENDING);
-
-    EXPECT_EQ(instance2_thread2->get_pid(), 2);
-    EXPECT_EQ(instance2_thread2->get_priority(), 15);
-    EXPECT_EQ(instance2_thread2->get_name(), "thread2");
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_thread_from_scheduler(1), instance2_thread1);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_thread_from_scheduler(2), instance2_thread2);
-    EXPECT_FALSE(instance2->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
-
-    instance2->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_RUNNING);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_thread(), instance2_thread1);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_pid(), instance2_thread1->get_pid());
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-
-    /**
-     * ------------------------------------------------------------------------------
-     * [TEST CASE] set "thread2" in instance2 to pending state, since "thread1" and
-     * "thread2" have the same priority all of those thread will not run
-     * unless one of those thread in blocked state and expected to run the thread
-     * with the pending state or status
-     * ------------------------------------------------------------------------------
-     **/
-
-    instance2->get<ThreadScheduler>().set_thread_status(instance2_thread1, THREAD_STATUS_PENDING);
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    instance2->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    instance2->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    instance2->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_PENDING);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    instance2->get<ThreadScheduler>().set_thread_status(instance2_thread1, THREAD_STATUS_RECEIVE_BLOCKED);
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_PENDING);
-
-    instance2->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(instance2_thread1->get_status(), THREAD_STATUS_RECEIVE_BLOCKED);
-    EXPECT_EQ(instance2_thread2->get_status(), THREAD_STATUS_RUNNING);
-
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_thread(), instance2_thread2);
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_current_active_pid(), instance2_thread2->get_pid());
-    EXPECT_EQ(instance2->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
+    EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(thread2->get_status(), THREAD_STATUS_RUNNING);
 }
 
-TEST_F(TestThread, thread_flags_test)
+TEST_F(TestThread, threadFlagsTest)
 {
-    instance_reset();
+    ThreadScheduler *scheduler = &ThreadScheduler::init();
 
-    EXPECT_TRUE(instance->is_initialized());
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_NE(scheduler, nullptr);
+    EXPECT_EQ(scheduler->numof_threads(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
     char idle_stack[128];
 
-    Thread *idle_thread = Thread::init(*instance, idle_stack, sizeof(idle_stack), 15,
-                                       THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                       NULL, NULL, "idle");
+    Thread *idle_thread = Thread::init(idle_stack, sizeof(idle_stack), nullptr, "idle", KERNEL_THREAD_PRIORITY_IDLE);
 
     EXPECT_NE(idle_thread, nullptr);
-
     EXPECT_EQ(idle_thread->get_pid(), 1);
-    EXPECT_EQ(idle_thread->get_priority(), 15);
+    EXPECT_EQ(idle_thread->get_priority(), KERNEL_THREAD_PRIORITY_IDLE);
     EXPECT_EQ(idle_thread->get_name(), "idle");
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
     char main_stack[128];
 
-    Thread *main_thread = Thread::init(*instance, main_stack, sizeof(main_stack), 7,
-                                       THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                       NULL, NULL, "main");
+    Thread *main_thread = Thread::init(main_stack, sizeof(main_stack), nullptr, "main");
 
     EXPECT_NE(main_thread, nullptr);
-
     EXPECT_EQ(main_thread->get_pid(), 2);
-    EXPECT_EQ(main_thread->get_priority(), 7);
+    EXPECT_EQ(main_thread->get_priority(), KERNEL_THREAD_PRIORITY_MAIN);
     EXPECT_EQ(main_thread->get_name(), "main");
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(idle_thread->get_pid()), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(main_thread->get_pid()), main_thread);
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_EQ(scheduler->numof_threads(), 2);
+    EXPECT_EQ(scheduler->get_thread_from_container(idle_thread->get_pid()), idle_thread);
+    EXPECT_EQ(scheduler->get_thread_from_container(main_thread->get_pid()), main_thread);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), main_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), main_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
+    EXPECT_EQ(sched_active_thread, main_thread);
+    EXPECT_EQ(sched_active_pid, main_thread->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 2);
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] thread flags wait any
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
-    instance->get<ThreadScheduler>().thread_flags_wait_any(0xf);
+    scheduler->thread_flags_wait_any(0xf);
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -950,15 +547,15 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->flags, 0);
     EXPECT_EQ(main_thread->waited_flags, 0xf);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x1);
+    scheduler->thread_flags_set(main_thread, 0x1);
 
-    /* any flag set to thread flags will immediately change the thread status to
-     * pending status */
+    // any flag set to thread flags will immediately change the thread status to
+    // pending status.
 
     EXPECT_EQ(main_thread->flags, 0x1);
     EXPECT_EQ(main_thread->waited_flags, 0xf);
@@ -966,21 +563,21 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().thread_flags_clear(0xf);
+    scheduler->thread_flags_clear(0xf);
 
-    /* at this point we already clear thread->flags so calling
-     * thread_flags_wait_any will make the current thread in FLAG_BLOCKED_ANY
-     * status */
+    // at this point we already clear thread->flags so calling
+    // thread_flags_wait_any will make the current thread in FLAG_BLOCKED_ANY
+    // status.
 
     EXPECT_EQ(main_thread->flags, 0);
     EXPECT_EQ(main_thread->waited_flags, 0xf);
 
-    instance->get<ThreadScheduler>().thread_flags_wait_any(0xf);
+    scheduler->thread_flags_wait_any(0xf);
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -988,15 +585,15 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->flags, 0);
     EXPECT_EQ(main_thread->waited_flags, 0xf);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x3);
+    scheduler->thread_flags_set(main_thread, 0x3);
 
-    /* now we use different flag to unlocked main_thread, any flag will unlocked
-     * main_thread */
+    // now we use different flag to unlocked main_thread, any flag will unlocked
+    // main_thread.
 
     EXPECT_EQ(main_thread->flags, 0x3);
     EXPECT_EQ(main_thread->waited_flags, 0xf);
@@ -1004,7 +601,7 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1013,14 +610,14 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->waited_flags, 0xf);
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] thread flags wait all
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
-    instance->get<ThreadScheduler>().thread_flags_wait_all(0xff);
+    scheduler->thread_flags_wait_all(0xff);
 
-    /* note: wait all will clear the previous main_thread flags */
+    // note: wait all will clear the previous main_thread flags.
 
     EXPECT_EQ(main_thread->flags, 0);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
@@ -1028,18 +625,18 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ALL);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ALL);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x1);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x2);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x4);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x8);
+    scheduler->thread_flags_set(main_thread, 0x1);
+    scheduler->thread_flags_set(main_thread, 0x2);
+    scheduler->thread_flags_set(main_thread, 0x4);
+    scheduler->thread_flags_set(main_thread, 0x8);
 
-    /* the thread should remain in FLAG_BLOCKED_ALL status until all flags is
-     * filled */
+    // the thread should remain in FLAG_BLOCKED_ALL status until all flags is
+    // filled.
 
     EXPECT_EQ(main_thread->flags, 0xf);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
@@ -1047,12 +644,12 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ALL);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x10);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x20);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x40);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x80);
+    scheduler->thread_flags_set(main_thread, 0x10);
+    scheduler->thread_flags_set(main_thread, 0x20);
+    scheduler->thread_flags_set(main_thread, 0x40);
+    scheduler->thread_flags_set(main_thread, 0x80);
 
-    /* at this point all flags is filled */
+    // at this point all flags is filled.
 
     EXPECT_EQ(main_thread->flags, 0xff);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
@@ -1060,22 +657,22 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().thread_flags_clear(0xf);
+    scheduler->thread_flags_clear(0xf);
 
-    /* clear half of the flags in main_thread->flags */
+    // clear half of the flags in main_thread->flags.
 
     EXPECT_EQ(main_thread->flags, 0xf0);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
 
-    instance->get<ThreadScheduler>().thread_flags_wait_all(0xff);
+    scheduler->thread_flags_wait_all(0xff);
 
-    /* this function will clear all the remain flags in main_thread->flags to
-     * wait all flags to be received again and set to FLAG_BLOCKED_ALL status */
+    // this function will clear all the remain flags in main_thread->flags to
+    // wait all flags to be received again and set to FLAG_BLOCKED_ALL status.
 
     EXPECT_EQ(main_thread->flags, 0);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
@@ -1083,19 +680,19 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ALL);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ALL);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x1);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x2);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x4);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x8);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x10);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x20);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x40);
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x80);
+    scheduler->thread_flags_set(main_thread, 0x1);
+    scheduler->thread_flags_set(main_thread, 0x2);
+    scheduler->thread_flags_set(main_thread, 0x4);
+    scheduler->thread_flags_set(main_thread, 0x8);
+    scheduler->thread_flags_set(main_thread, 0x10);
+    scheduler->thread_flags_set(main_thread, 0x20);
+    scheduler->thread_flags_set(main_thread, 0x40);
+    scheduler->thread_flags_set(main_thread, 0x80);
 
     EXPECT_EQ(main_thread->flags, 0xff);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
@@ -1103,18 +700,18 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->flags, 0xff);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
 
-    instance->get<ThreadScheduler>().thread_flags_wait_all(0xff); /* this will take no effect */
+    scheduler->thread_flags_wait_all(0xff); // this will take no effect.
 
-    /* Note: previous main_thread->flags is 0xff and calling this function again
-     * will assume that the flags has been filled and clear the
-     * main_thread->flags and will not blocked main_thread. to make
-     * thread_flags_wait_all immediately taking effect we must clear the
-     * main_thread->flags first. */
+    // Note: previous main_thread->flags is 0xff and calling this function again
+    // will assume that the flags has been filled and clear the
+    // main_thread->flags and will not blocked main_thread. to make
+    // thread_flags_wait_all immediately taking effect we must clear the
+    // main_thread->flags first.
 
     EXPECT_EQ(main_thread->flags, 0x0);
     EXPECT_EQ(main_thread->waited_flags, 0xff);
@@ -1122,7 +719,7 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    /* main_thread->flags is cleared but main_thread is still in running status */
+    // main_thread->flags is cleared but main_thread is still in running status.
 
     /**
      * ------------------------------------------------------------------------------
@@ -1136,7 +733,7 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().thread_flags_wait_one(0x3);
+    scheduler->thread_flags_wait_one(0x3);
 
     EXPECT_EQ(main_thread->flags, 0x0);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1144,14 +741,14 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x10);
+    scheduler->thread_flags_set(main_thread, 0x10);
 
-    /* Note: we set the flag that is not being wait */
+    // Note: we set the flag that is not being wait.
 
     EXPECT_EQ(main_thread->flags, 0x10);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1159,7 +756,7 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x1);
+    scheduler->thread_flags_set(main_thread, 0x1);
 
     EXPECT_EQ(main_thread->flags, 0x11);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1167,7 +764,7 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->flags, 0x11);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1175,11 +772,11 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().thread_flags_wait_one(0x3);
+    scheduler->thread_flags_wait_one(0x3);
 
-    /* previous flags is not being cleared, calling this function will assume
-     * the flags has been filled and clear the flags corresponding to waited_one 
-     * mask*/
+    // previous flags is not being cleared, calling this function will assume
+    // the flags has been filled and clear the flags corresponding to waited_one 
+    // mask.
 
     EXPECT_EQ(main_thread->flags, 0x10);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1187,9 +784,9 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().thread_flags_wait_one(0x3);
+    scheduler->thread_flags_wait_one(0x3);
 
-    /* now it will blocked main_thread */
+    // now it will blocked main_thread.
 
     EXPECT_EQ(main_thread->flags, 0x10);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1197,12 +794,12 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().thread_flags_set(main_thread, 0x2);
+    scheduler->thread_flags_set(main_thread, 0x2);
 
     EXPECT_EQ(main_thread->flags, 0x12);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1210,7 +807,7 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1218,9 +815,9 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(main_thread->flags, 0x12);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
 
-    instance->get<ThreadScheduler>().thread_flags_clear(0xff);
+    scheduler->thread_flags_clear(0xff);
 
-    /* clear main_thread (current thread) flags */
+    // clear main_thread (current thread) flags.
 
     EXPECT_EQ(main_thread->flags, 0);
     EXPECT_EQ(main_thread->waited_flags, 0x3);
@@ -1229,122 +826,120 @@ TEST_F(TestThread, thread_flags_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 }
 
-TEST_F(TestThread, thread_event_test)
+TEST_F(TestThread, threadEventTest)
 {
-    instance_reset();
+    ThreadScheduler *scheduler = &ThreadScheduler::init();
 
-    EXPECT_TRUE(instance->is_initialized());
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_NE(scheduler, nullptr);
+    EXPECT_EQ(scheduler->numof_threads(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
     char idle_stack[128];
 
-    Thread *idle_thread = Thread::init(*instance, idle_stack, sizeof(idle_stack), 15,
-                                       THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                       NULL, NULL, "idle");
+    Thread *idle_thread = Thread::init(idle_stack, sizeof(idle_stack), nullptr, "idle", KERNEL_THREAD_PRIORITY_IDLE);
 
     EXPECT_NE(idle_thread, nullptr);
-
     EXPECT_EQ(idle_thread->get_pid(), 1);
-    EXPECT_EQ(idle_thread->get_priority(), 15);
+    EXPECT_EQ(idle_thread->get_priority(), KERNEL_THREAD_PRIORITY_IDLE);
     EXPECT_EQ(idle_thread->get_name(), "idle");
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
 
     char main_stack[128];
 
-    Thread *main_thread = Thread::init(*instance, main_stack, sizeof(main_stack), 7,
-                                       THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                       NULL, NULL, "main");
+    Thread *main_thread = Thread::init(main_stack, sizeof(main_stack), nullptr, "main");
 
     EXPECT_NE(main_thread, nullptr);
-
     EXPECT_EQ(main_thread->get_pid(), 2);
-    EXPECT_EQ(main_thread->get_priority(), 7);
+    EXPECT_EQ(main_thread->get_priority(), KERNEL_THREAD_PRIORITY_MAIN);
     EXPECT_EQ(main_thread->get_name(), "main");
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(idle_thread->get_pid()), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(main_thread->get_pid()), main_thread);
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_EQ(scheduler->numof_threads(), 2);
+    EXPECT_EQ(scheduler->get_thread_from_container(idle_thread->get_pid()), idle_thread);
+    EXPECT_EQ(scheduler->get_thread_from_container(main_thread->get_pid()), main_thread);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), main_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), main_thread->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
+    EXPECT_EQ(sched_active_thread, main_thread);
+    EXPECT_EQ(sched_active_pid, main_thread->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 2);
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] create thread event
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
     char event_stack[128];
 
-    Thread *event_thread = Thread::init(*instance, event_stack, sizeof(event_stack), 5,
-                                        THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                        NULL, NULL, "event");
+    Thread *event_thread = Thread::init(event_stack, sizeof(event_stack), nullptr, "event",
+                                    KERNEL_THREAD_PRIORITY_MAIN - 1);
 
     EXPECT_NE(event_thread, nullptr);
-
     EXPECT_EQ(event_thread->get_pid(), 3);
-    EXPECT_EQ(event_thread->get_priority(), 5);
+    EXPECT_EQ(event_thread->get_priority(), KERNEL_THREAD_PRIORITY_MAIN - 1);
     EXPECT_EQ(event_thread->get_name(), "event");
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 3);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(idle_thread->get_pid()), idle_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(main_thread->get_pid()), main_thread);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(event_thread->get_pid()), event_thread);
+    EXPECT_EQ(scheduler->numof_threads(), 3);
+    EXPECT_EQ(scheduler->get_thread_from_container(idle_thread->get_pid()), idle_thread);
+    EXPECT_EQ(scheduler->get_thread_from_container(main_thread->get_pid()), main_thread);
+    EXPECT_EQ(scheduler->get_thread_from_container(event_thread->get_pid()), event_thread);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+    EXPECT_EQ(sched_active_thread, main_thread);
+    EXPECT_EQ(sched_active_pid, main_thread->get_pid());
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
-    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_RUNNING);
 
+    EXPECT_EQ(sched_active_thread, event_thread);
+    EXPECT_EQ(sched_active_pid, event_thread->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 3);
+
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] wait event in event_thread
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
     EXPECT_EQ(sizeof(EventQueue), sizeof(event_queue_t));
-    
-    /* create event queue */
-    EventQueue queue = EventQueue(*instance);
 
-    EXPECT_EQ(queue.event_wait(), nullptr); /* nothing in the queue, event_thread will in blocked status */
+    // create event queue
+    EventQueue queue = EventQueue();
+
+    EXPECT_EQ(queue.event_wait(), nullptr); // nothing in the queue, event_thread will in blocked status
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    /* Note: now event_thread is already in FLAG_BLOCKED_ANY status to wait any
-     * event to be received */
+    // Note: now event_thread is already in FLAG_BLOCKED_ANY status to wait any
+    // event to be received.
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] post event to event_thread
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
     Event event1 = Event();
@@ -1354,29 +949,29 @@ TEST_F(TestThread, thread_event_test)
     queue.event_post(&event1, event_thread);
     queue.event_post(&event1, event_thread);
 
-    /* Note: [IMPORTANT] posting same event multiple times will not increase event_queue */
+    // Note: [IMPORTANT] posting same event multiple times will not increase event_queue.
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    /* Note: at this point event is succesfully received and event_thread now
-     * alread in running status */
+    // Note: at this point event is succesfully received and event_thread now
+    // alread in running status.
 
     EXPECT_EQ(queue.event_wait(), &event1);
     queue.event_release(&event1);
 
-    /* Note: [IMPORTANT] event_wait() need to release the event manually before
-     * it can be reuse, and make sure the event is not in the queue when you
-     * release it */
+    // Note: [IMPORTANT] event_wait() need to release the event manually before
+    // it can be reuse, and make sure the event is not in the queue when you
+    // release it.
 
-    EXPECT_EQ(queue.event_wait(), nullptr); /* nothing on the queue */
+    EXPECT_EQ(queue.event_wait(), nullptr); // nothing on the queue.
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1388,12 +983,12 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    /* Note: calling event_wait at line 1351 not immediately set event_thread to
-     * blocked status because the thread flags was not cleared before, in real
-     * device we will do while loop if event_wait result is NULL to make sure
-     * the thread go into blocked status */
+    // Note: calling event_wait at line 1351 not immediately set event_thread to
+    // blocked status because the thread flags was not cleared before, in real
+    // device we will do while loop if event_wait result is NULL to make sure
+    // the thread go into blocked status.
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1405,7 +1000,7 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1413,16 +1008,16 @@ TEST_F(TestThread, thread_event_test)
 
     EXPECT_EQ(queue.event_wait(), &event1);
 
-    queue.event_release(&event1); /* event1 no longer in the queue, so release it for later use */
+    queue.event_release(&event1); // event1 no longer in the queue, so release it for later use.
 
     EXPECT_NE(event_thread->flags, 0);
 
-    /* Note: calling first event_wait will not clear thread->flags */
+    // Note: calling first event_wait will not clear thread->flags.
 
     EXPECT_EQ(queue.event_wait(), nullptr);
 
-    /* Note: no more event in the queue, this time it will clear the flags, but
-     * the event_thread is still in RUNNING status */
+    // Note: no more event in the queue, this time it will clear the flags, but
+    // the event_thread is still in RUNNING status.
 
     EXPECT_EQ(event_thread->flags, 0);
 
@@ -1432,14 +1027,14 @@ TEST_F(TestThread, thread_event_test)
 
     EXPECT_EQ(queue.event_wait(), nullptr);
 
-    /* Note: at this time, no event on the queue, the flags is clear, it will
-     * set event thread status to FLAG_BLOCKED_ANY */
+    // Note: at this time, no event on the queue, the flags is clear, it will
+    // set event thread status to FLAG_BLOCKED_ANY.
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1451,7 +1046,7 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1463,22 +1058,22 @@ TEST_F(TestThread, thread_event_test)
 
     EXPECT_NE(event_thread->flags, 0);
 
-    /* Note: try to clear event thread flags first before calling event_loop() */
+    // Note: try to clear event thread flags first before calling event_loop().
 
-    instance->get<ThreadScheduler>().thread_flags_clear(0xffff);
+    scheduler->thread_flags_clear(0xffff);
 
     EXPECT_EQ(event_thread->flags, 0);
 
     EXPECT_EQ(queue.event_wait(), nullptr);
 
-    /* Note: calling event_wait() now will effective immediately because
-     * THREAD_FLAG_EVENT was cleared and no event in the event_queue */
+    // Note: calling event_wait() now will effective immediately because
+    // THREAD_FLAG_EVENT was cleared and no event in the event_queue.
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1490,7 +1085,7 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1498,8 +1093,8 @@ TEST_F(TestThread, thread_event_test)
 
     event_t *ev = queue.event_get();
 
-    /* Note: event_get() will automatically release the event, so no need to
-     * call event_release() */
+    // Note: event_get() will automatically release the event, so no need to
+    // call event_release().
 
     EXPECT_NE(ev, nullptr);
     EXPECT_EQ(ev, &event1);
@@ -1511,16 +1106,16 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] post multiple different events
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
     Event event2 = Event();
@@ -1538,42 +1133,42 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    /* cancel event 3 */
+    // cancel event 3.
 
     queue.event_cancel(&event3);
 
-    /* Note: event_cancel() will automatically release the the event */
+    // Note: event_cancel() will automatically release the the event.
     
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    ev = queue.event_get(); /* get event1 */
+    ev = queue.event_get(); // get event1
     EXPECT_NE(ev, nullptr);
     EXPECT_EQ(ev, &event1);
 
-    ev = queue.event_get(); /* get event2 */
+    ev = queue.event_get(); // get event2
     EXPECT_NE(ev, nullptr);
     EXPECT_EQ(ev, &event2);
 
-    ev = queue.event_get(); /* get event4, event3 was canceled */
+    ev = queue.event_get(); // get event4, event3 was canceled
     EXPECT_NE(ev, nullptr);
     EXPECT_EQ(ev, &event4);
 
     EXPECT_EQ(queue.event_wait(), &event5);
     queue.event_release(&event5);
 
-    ev = queue.event_get(); /* no event available */
+    ev = queue.event_get(); // no event available
 
     EXPECT_EQ(ev, nullptr);
 
-    instance->get<ThreadScheduler>().thread_flags_clear(0xffff);
+    scheduler->thread_flags_clear(0xffff);
 
     EXPECT_EQ(queue.event_wait(), nullptr);
 
@@ -1581,16 +1176,16 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
     /**
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      * [TEST CASE] cancel event and post it again
-     * ------------------------------------------------------------------------------
+     * -------------------------------------------------------------------------
      **/
 
     queue.event_post(&event3, event_thread);
@@ -1605,28 +1200,28 @@ TEST_F(TestThread, thread_event_test)
 
     queue.event_post(&event3, event_thread);
 
-    /* Note: after canceled and repost again, event3 position will be at the end of the queue */
+    // Note: after canceled and repost again, event3 position will be at the end of the queue.
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(queue.event_wait(), &event4); /* this will get event4 */
+    EXPECT_EQ(queue.event_wait(), &event4); // this will get event4
     queue.event_release(&event4);
 
-    EXPECT_EQ(queue.event_wait(), &event5); /* this will get event5 */
+    EXPECT_EQ(queue.event_wait(), &event5); // this will get event5
     queue.event_release(&event5);
 
-    EXPECT_EQ(queue.event_wait(), &event3); /* this will get event3 */
+    EXPECT_EQ(queue.event_wait(), &event3); // this will get event3
     queue.event_release(&event3);
 
-    ev = queue.event_get(); /* no event left */
+    ev = queue.event_get(); // no event left
 
     EXPECT_EQ(ev, nullptr);
 
@@ -1637,7 +1232,7 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_FLAG_BLOCKED_ANY);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
@@ -1660,7 +1255,7 @@ TEST_F(TestThread, thread_event_test)
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(event_thread->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(main_thread->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(idle_thread->get_status(), THREAD_STATUS_PENDING);

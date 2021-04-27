@@ -29,50 +29,29 @@
 
 namespace vc {
 
-class Instance;
-
-#if !VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-extern uint64_t instance_raw[];
-#endif
-
 class Mutex : public mutex_t
 {
 public:
-    explicit Mutex(Instance &instance)
+    Mutex(int state = MUTEX_INIT_LOCKED)
     {
-        init(instance);
+        if (state == MUTEX_INIT_LOCKED)
+        {
+            this->queue.next = MUTEX_LOCKED;
+        }
+        else
+        {
+            this->queue.next = nullptr;    
+        }
     }
 
-    void init(Instance &instances)
-    {
-        queue.next = NULL;
-#if VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-        instance = static_cast<void *>(&instances);
-#else
-        (void)instances;
-#endif
-    }
-
-    int try_lock(void) { return set_lock(0); }
-
-    void lock(void) { set_lock(1); }
-
-    kernel_pid_t peek(void);
-
-    void unlock(void);
-
-    void unlock_and_sleeping_current_thread(void);
+    int try_lock() { return set_lock(0); }
+    void lock() { set_lock(1); }
+    kernel_pid_t peek();
+    void unlock();
+    void unlock_and_sleep();
 
 private:
     int set_lock(int blocking);
-
-    template <typename Type> inline Type &get(void) const;
-
-#if VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    Instance &get_instance(void) const { return *static_cast<Instance *>(instance); }
-#else
-    Instance &get_instance(void) const { return *reinterpret_cast<Instance *>(&instance_raw); }
-#endif
 };
 
 } // namespace vc

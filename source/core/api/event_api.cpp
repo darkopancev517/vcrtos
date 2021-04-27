@@ -20,7 +20,6 @@
 #include <vcrtos/thread.h>
 
 #include "core/code_utils.h"
-#include "core/instance.hpp"
 #include "core/new.hpp"
 #include "core/thread.hpp"
 
@@ -33,10 +32,9 @@ void event_init(event_t *event)
     event = new (event) Event();
 }
 
-void event_queue_init(void *instances, event_queue_t *queue)
+void event_queue_init(event_queue_t *queue)
 {
-    Instance &instance = *static_cast<Instance *>(instances);
-    queue = new (queue) EventQueue(instance);
+    queue = new (queue) EventQueue();
 }
 
 void event_post(event_queue_t *queue, event_t *event, thread_t *thread)

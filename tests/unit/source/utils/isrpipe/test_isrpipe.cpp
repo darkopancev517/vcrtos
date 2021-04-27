@@ -17,7 +17,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/instance.hpp"
+#include "core/thread.hpp"
 
 #include "utils/isrpipe.hpp"
 
@@ -45,34 +45,30 @@ protected:
 class TestUtilsUartIsrpipe : public testing::Test
 {
 protected:
-    Instance *instance;
     UartIsrpipe *uart_isrpipe;
 
     virtual void SetUp()
     {
-        instance = new Instance();
-        uart_isrpipe = new UartIsrpipe(*instance);
+        uart_isrpipe = new UartIsrpipe();
     }
 
     virtual void TearDown()
     {
-        delete instance;
         delete uart_isrpipe;
     }
 };
 
-TEST_F(TestUtilsTsrb, constructor_test)
+TEST_F(TestUtilsTsrb, tsrbConstructorTest)
 {
     EXPECT_TRUE(tsrb);
 }
 
-TEST_F(TestUtilsUartIsrpipe, constructor_test)
+TEST_F(TestUtilsUartIsrpipe, isrpipeConstructorTest)
 {
-    EXPECT_TRUE(instance);
     EXPECT_TRUE(uart_isrpipe);
 }
 
-TEST_F(TestUtilsTsrb, functions_test)
+TEST_F(TestUtilsTsrb, tsrbFunctionTest)
 {
     EXPECT_EQ(tsrb->avail(), 0);
     EXPECT_TRUE(tsrb->is_empty());
@@ -143,62 +139,53 @@ TEST_F(TestUtilsTsrb, functions_test)
     EXPECT_EQ(result[3], (char)0xfd);
 }
 
-TEST_F(TestUtilsUartIsrpipe, functions_test)
+TEST_F(TestUtilsUartIsrpipe, uartIsrpipeFunctionsTest)
 {
-    EXPECT_TRUE(instance->is_initialized());
+    ThreadScheduler *scheduler = &ThreadScheduler::init();
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 0);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
+    EXPECT_NE(scheduler, nullptr);
+    EXPECT_EQ(scheduler->numof_threads(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
 
     char stack1[128];
 
-    Thread *thread1 = Thread::init(*instance, stack1, sizeof(stack1), 15,
-                                   THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                   NULL, NULL, "thread1");
+    Thread *thread1 = Thread::init(stack1, sizeof(stack1), nullptr, "thread1", KERNEL_THREAD_PRIORITY_MAIN);
 
     EXPECT_NE(thread1, nullptr);
-
     EXPECT_EQ(thread1->get_pid(), 1);
-    EXPECT_EQ(thread1->get_priority(), 15);
+    EXPECT_EQ(thread1->get_priority(), KERNEL_THREAD_PRIORITY_MAIN);
     EXPECT_EQ(thread1->get_name(), "thread1");
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 1);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_thread_from_scheduler(thread1->get_pid()), thread1);
-    EXPECT_FALSE(instance->get<ThreadScheduler>().is_context_switch_requested());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), nullptr);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), KERNEL_PID_UNDEF);
-
-    instance->get<ThreadScheduler>().run();
-
-    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
-
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), thread1);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), thread1->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 1);
-
     char stack2[128];
 
-    Thread *thread2 = Thread::init(*instance, stack2, sizeof(stack2), 14,
-                                   THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                                   NULL, NULL, "thread2");
+    Thread *thread2 = Thread::init(stack2, sizeof(stack2), nullptr, "thread2", KERNEL_THREAD_PRIORITY_MAIN - 1);
 
     EXPECT_NE(thread2, nullptr);
-
     EXPECT_EQ(thread2->get_pid(), 2);
-    EXPECT_EQ(thread2->get_priority(), 14);
+    EXPECT_EQ(thread2->get_priority(), KERNEL_THREAD_PRIORITY_MAIN - 1);
     EXPECT_EQ(thread2->get_name(), "thread2");
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_PENDING);
 
-    instance->get<ThreadScheduler>().run();
+    EXPECT_EQ(scheduler->numof_threads(), 2);
+    EXPECT_EQ(scheduler->get_thread_from_container(thread1->get_pid()), thread1);
+    EXPECT_EQ(scheduler->get_thread_from_container(thread2->get_pid()), thread2);
+    EXPECT_EQ(scheduler->requested_context_switch(), 0);
+    EXPECT_EQ(sched_active_thread, nullptr);
+    EXPECT_EQ(sched_active_pid, KERNEL_PID_UNDEF);
+
+    EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
+    EXPECT_EQ(thread2->get_status(), THREAD_STATUS_PENDING);
+
+    scheduler->run();
 
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_RUNNING);
 
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_thread(), thread2);
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_current_active_pid(), thread2->get_pid());
-    EXPECT_EQ(instance->get<ThreadScheduler>().get_numof_threads_in_scheduler(), 2);
+    EXPECT_EQ(sched_active_thread, thread2);
+    EXPECT_EQ(sched_active_pid, thread2->get_pid());
+    EXPECT_EQ(scheduler->numof_threads(), 2);
 
     uart_isrpipe->write_one(0x1);
     uart_isrpipe->write_one(0x2);
@@ -252,7 +239,7 @@ TEST_F(TestUtilsUartIsrpipe, functions_test)
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_RUNNING);
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_MUTEX_BLOCKED);
@@ -264,7 +251,7 @@ TEST_F(TestUtilsUartIsrpipe, functions_test)
 
     /* Note: we get new data in uart_isrpipe so set thread2 to pending */
 
-    instance->get<ThreadScheduler>().run();
+    scheduler->run();
 
     EXPECT_EQ(thread1->get_status(), THREAD_STATUS_PENDING);
     EXPECT_EQ(thread2->get_status(), THREAD_STATUS_RUNNING);

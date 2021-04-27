@@ -23,7 +23,6 @@
 #include "cli/cli_uart.hpp"
 
 #include "core/code_utils.h"
-#include "core/instance.hpp"
 #include "core/new.hpp"
 #include "core/thread.hpp"
 
@@ -65,18 +64,14 @@ extern "C" void *thread_cli_uart_handler(void *arg)
 
 char _cli_uart_stack[VCRTOS_CONFIG_CLI_UART_THREAD_STACK_SIZE];
 
-extern "C" void vccli_uart_init(void *instance)
+extern "C" void vccli_uart_init()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
+    Uart::_uart_server = new (&cli_uart_raw) Uart();
 
-    Uart::_uart_server = new (&cli_uart_raw) Uart(instances);
-
-    (void) thread_create(instance, _cli_uart_stack, sizeof(_cli_uart_stack),
+    (void) thread_create(_cli_uart_stack, sizeof(_cli_uart_stack), thread_cli_uart_handler, "uart-cli",
                          VCRTOS_CONFIG_CLI_UART_THREAD_PRIORITY,
-                         THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER,
-                         thread_cli_uart_handler,
                          static_cast<void *>(Uart::_uart_server),
-                         "uart-cli");
+                         THREAD_FLAGS_CREATE_WOUT_YIELD | THREAD_FLAGS_CREATE_STACKMARKER);
 }
 
 extern "C" void vccli_set_user_commands(const cli_command_t *user_commands, uint8_t length)
@@ -102,12 +97,12 @@ extern "C" void vccli_output(const char *string, uint16_t length)
     Uart::_uart_server->output(string, length);
 }
 
-Uart::Uart(Instance &instances)
+Uart::Uart()
     : _rx_length(0)
     , _tx_head(0)
     , _tx_length(0)
     , _send_length(0)
-    , _interpreter(instances)
+    , _interpreter()
 {
 }
 
@@ -154,7 +149,7 @@ void Uart::receive_task(const uint8_t *buf, uint16_t buf_length)
     }
 }
 
-int Uart::process_command(void)
+int Uart::process_command()
 {
     if (_rx_buffer[_rx_length - 1] == '\n')
     {
@@ -207,7 +202,7 @@ int Uart::output_format(const char *fmt, ...)
     return output(buf, static_cast<uint16_t>(strlen(buf)));
 }
 
-void Uart::send(void)
+void Uart::send()
 {
     while (_tx_length > 0)
     {
@@ -230,9 +225,7 @@ void Uart::send(void)
         }
 
         _tx_head = (_tx_head + _send_length) % TX_BUFFER_SIZE;
-
         _tx_length -= _send_length;
-
         _send_length = 0;
     }
 }

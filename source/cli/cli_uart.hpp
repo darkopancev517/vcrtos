@@ -25,23 +25,16 @@
 
 namespace vc {
 
-class Instance;
-
 namespace cli {
 
 class Uart : public Server
 {
 public:
-    explicit Uart(Instance &instances);
-
+    Uart();
     virtual int output(const char *buf, uint16_t buf_length);
-
     virtual int output_format(const char *fmt, ...);
-
-    Interpreter &get_interpreter(void) { return _interpreter; }
-
+    Interpreter &get_interpreter() { return _interpreter; }
     void receive_task(const uint8_t *buf, uint16_t buf_length);
-
     static Uart *_uart_server;
 
 private:
@@ -52,8 +45,8 @@ private:
         MAX_LINE_LENGTH = VCRTOS_CONFIG_CLI_MAX_LINE_LENGTH,
     };
 
-    int process_command(void);
-    void send(void);
+    int process_command();
+    void send();
 
     char _rx_buffer[RX_BUFFER_SIZE];
     uint16_t _rx_length;

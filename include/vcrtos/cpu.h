@@ -40,31 +40,19 @@ extern "C" {
  * of asm("bl #-2\n") or 'while (1);', i.e. an infinite loop */
 #define STACK_CANARY_WORD (0xE7FEE7FEu)
 
-unsigned cpu_irq_disable(void);
-
-unsigned cpu_irq_enable(void);
-
+unsigned cpu_irq_disable();
+unsigned cpu_irq_enable();
 void cpu_irq_restore(unsigned state);
-
-int cpu_is_in_isr(void);
-
-extern void cpu_end_of_isr(void);
-
-void cpu_trigger_pendsv_interrupt(void);
-
-void cpu_switch_context_exit(void);
-
-void cpu_print_last_instruction(void);
-
-void cpu_sleep_until_event(void);
-
+int cpu_is_in_isr();
+extern void cpu_end_of_isr();
+void cpu_trigger_pendsv_interrupt();
+void cpu_switch_context_exit();
+void cpu_print_last_instruction();
+void cpu_sleep_until_event();
 void cpu_sleep(int deep);
-
 void cpu_jump_to_image(uint32_t image_addr);
-
-uint32_t cpu_get_image_base_addr(void);
-
-void *cpu_get_msp(void);
+uint32_t cpu_get_image_base_addr();
+void *cpu_get_msp();
 
 #ifdef __cplusplus
 }

@@ -33,15 +33,11 @@ typedef struct
     mutex_t mutex;
     uint16_t refcount;
     atomic_int_least16_t owner;
-    void *instance;
 } rmutex_t;
 
-void rmutex_init(void *instance, rmutex_t *rmutex);
-
+void rmutex_init(rmutex_t *rmutex);
 void rmutex_lock(rmutex_t *rmutex);
-
 int rmutex_trylock(rmutex_t *rmutex);
-
 void rmutex_unlock(rmutex_t *rmutex);
 
 #ifdef __cplusplus

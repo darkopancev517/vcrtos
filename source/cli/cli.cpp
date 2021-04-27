@@ -20,7 +20,6 @@
 #include <string.h>
 
 #include "core/code_utils.h"
-#include "core/instance.hpp"
 
 #include "cli/cli.hpp"
 #include "cli/cli_server.hpp"
@@ -28,16 +27,11 @@
 namespace vc {
 namespace cli {
 
-Interpreter::Interpreter(Instance &instances)
+Interpreter::Interpreter()
     : _user_commands(NULL)
     , _user_commands_length(0)
     , _server(NULL)
 {
-#if VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    instance = static_cast<void *>(&instances);
-#else
-    (void) instances;
-#endif
 }
 
 void Interpreter::output_bytes(const uint8_t *bytes, uint8_t length) const
@@ -119,16 +113,6 @@ void Interpreter::set_user_commands(const cli_command_t *commands, uint8_t lengt
 {
     _user_commands = commands;
     _user_commands_length = length;
-}
-
-template <> inline Instance &Interpreter::get(void) const
-{
-    return get_instance();
-}
-
-template <typename Type> inline Type &Interpreter::get(void) const
-{
-    return get_instance().get<Type>();
 }
 
 } // namespace cli

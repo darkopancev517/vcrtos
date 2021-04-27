@@ -17,8 +17,6 @@
 
 #include "gtest/gtest.h"
 
-#include "core/instance.hpp"
-
 #include "utils/heap.hpp"
 
 using namespace vc;

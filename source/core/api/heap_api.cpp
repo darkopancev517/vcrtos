@@ -31,26 +31,26 @@ DEFINE_ALIGNED_VAR(heap_raw, sizeof(Heap), uint64_t);
 
 static Heap *heap = NULL;
 
-void *heap_init(void)
+void *heap_init()
 {
     vcassert(heap == NULL);
     heap = new (&heap_raw) Heap();
     return heap;
 }
 
-size_t heap_get_free_size(void)
+size_t heap_get_free_size()
 {
     vcassert(heap != NULL);
     return heap->get_free_size();
 }
 
-size_t heap_get_capacity(void)
+size_t heap_get_capacity()
 {
     vcassert(heap != NULL);
     return heap->get_capacity();
 }
 
-bool heap_is_clean(void)
+bool heap_is_clean()
 {
     vcassert(heap != NULL);
     return heap->is_clean();

@@ -44,7 +44,7 @@ extern "C" {
 
 typedef int16_t kernel_pid_t;
 
-void kernel_init(void);
+void kernel_init();
 
 #ifdef __cplusplus
 }

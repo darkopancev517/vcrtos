@@ -17,67 +17,66 @@
 
 #include <vcrtos/thread.h>
 
-#include "core/instance.hpp"
 #include "core/thread.hpp"
 
 using namespace vc;
 
-kernel_pid_t thread_create(void *instance,
-                           char *stack,
+kernel_pid_t thread_create(char *stack,
                            int size,
-                           char priority,
-                           int flags,
                            thread_handler_func_t func,
+                           const char *name,
+                           char priority,
                            void *arg,
-                           const char *name)
+                           int flags)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    Thread *thread = Thread::init(instances, stack, size, priority, flags, func, arg, name);
+    Thread *thread = Thread::init(stack, size, func, name, priority, arg, flags);
     return (thread) ? thread->get_pid() : KERNEL_PID_UNDEF;
 }
 
-int thread_scheduler_get_context_switch_request(void *instance)
+void thread_scheduler_init()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    return instances.get<ThreadScheduler>().is_context_switch_requested();
+    ThreadScheduler::init();
 }
 
-void thread_scheduler_set_context_switch_request(void *instance, unsigned state)
+int thread_scheduler_is_initialized()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-
-    if (state)
-    {
-        instances.get<ThreadScheduler>().enable_context_switch_request();
-    }
-    else
-    {
-        instances.get<ThreadScheduler>().disable_context_switch_request();
-    }
+    return ThreadScheduler::is_initialized();
 }
 
-void thread_scheduler_run(void *instance)
+int thread_scheduler_requested_context_switch()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    instances.get<ThreadScheduler>().run();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    return scheduler->requested_context_switch();
 }
 
-void thread_scheduler_set_status(void *instance, thread_t *thread, thread_status_t status)
+void thread_scheduler_context_switch_request(unsigned state)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    instances.get<ThreadScheduler>().set_thread_status(static_cast<Thread *>(thread), status);
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->set_context_switch_request(state);
 }
 
-void thread_scheduler_switch(void *instance, uint8_t priority)
+void thread_scheduler_run()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    instances.get<ThreadScheduler>().context_switch(priority);
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->run();
 }
 
-void thread_exit(void *instance)
+void thread_scheduler_set_status(thread_t *thread, thread_status_t status)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    instances.get<ThreadScheduler>().exit_current_active_thread();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->set_thread_status(static_cast<Thread *>(thread), status);
+}
+
+void thread_scheduler_switch(uint8_t priority)
+{
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->context_switch(priority);
+}
+
+void thread_exit()
+{
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->exit();
 }
 
 int thread_pid_is_valid(kernel_pid_t pid)
@@ -85,48 +84,44 @@ int thread_pid_is_valid(kernel_pid_t pid)
     return Thread::is_pid_valid(pid);
 }
 
-void thread_yield(void *instance)
+void thread_yield()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    instances.get<ThreadScheduler>().yield();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->yield();
 }
 
-thread_t *thread_current(void *instance)
+thread_t *thread_current()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    Thread *thread = instances.get<ThreadScheduler>().get_current_active_thread();
-    return static_cast<thread_t *>(thread);
+    return (thread_t *)sched_active_thread;
 }
 
-void thread_sleep(void *instance)
+void thread_sleep()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    instances.get<ThreadScheduler>().sleeping_current_thread();
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->sleep();
 }
 
-int thread_wakeup(void *instance, kernel_pid_t pid)
+int thread_wakeup(kernel_pid_t pid)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    return instances.get<ThreadScheduler>().wakeup_thread(pid);
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    return scheduler->wakeup_thread(pid);
 }
 
-kernel_pid_t thread_current_pid(void *instance)
+kernel_pid_t thread_current_pid()
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    return instances.get<ThreadScheduler>().get_current_active_pid();
+    return (kernel_pid_t)sched_active_pid;
 }
 
-thread_t *thread_get_from_scheduler(void *instance, kernel_pid_t pid)
+thread_t *thread_get_from_scheduler(kernel_pid_t pid)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    Thread *thread = instances.get<ThreadScheduler>().get_thread_from_scheduler(pid);
-    return static_cast<thread_t *>(thread);
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    return static_cast<thread_t *>(scheduler->get_thread_from_container(pid));
 }
 
-uint64_t thread_get_runtime_ticks(void *instance, kernel_pid_t pid)
+uint64_t thread_get_runtime_ticks(kernel_pid_t pid)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    return instances.get<ThreadScheduler>().get_thread_runtime_ticks(pid);
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    return scheduler->get_thread_runtime_ticks(pid);
 }
 
 const char *thread_status_to_string(thread_status_t status)
@@ -137,21 +132,18 @@ const char *thread_status_to_string(thread_status_t status)
 uintptr_t thread_measure_stack_free(char *stack)
 {
     uintptr_t *stackp = (uintptr_t *)stack;
-
     /* assume that the comparison fails before or after end of stack */
     /* assume that the stack grows "downwards" */
     while (*stackp == (uintptr_t)stackp)
     {
         stackp++;
     }
-
     uintptr_t space_free = (uintptr_t)stackp - (uintptr_t)stack;
-
     return space_free;
 }
 
-unsigned thread_get_schedules_stat(void *instance, kernel_pid_t pid)
+uint32_t thread_get_schedules_stat(kernel_pid_t pid)
 {
-    Instance &instances = *static_cast<Instance *>(instance);
-    return instances.get<ThreadScheduler>().get_thread_schedules_stat(pid);
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    return scheduler->get_thread_schedules_stat(pid);
 }

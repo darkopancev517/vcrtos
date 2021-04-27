@@ -38,20 +38,11 @@ typedef struct
     unsigned int value;
     sema_state_t state;
     mutex_t mutex;
-    void *instance;
 } sema_t;
 
-void sema_create(void *instance, sema_t *sema, unsigned int value);
-
+void sema_create(sema_t *sema, unsigned int value);
 void sema_destroy(sema_t *sema);
-
 int sema_post(sema_t *sema);
-
-int sema_wait_timed(sema_t *sema, uint64_t timeout);
-
-int sema_wait(sema_t *sema);
-
-int sema_try_wait(sema_t *sema);
 
 #ifdef __cplusplus
 }

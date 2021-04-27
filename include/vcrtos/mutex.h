@@ -29,25 +29,20 @@ extern "C" {
 
 #define MUTEX_LOCKED ((list_node_t *)-1)
 
+#define MUTEX_INIT_UNLOCKED 0
+#define MUTEX_INIT_LOCKED   1
+
 typedef struct mutex
 {
     list_node_t queue;
-#if VCRTOS_CONFIG_MULTIPLE_INSTANCE_ENABLE
-    void *instance;
-#endif
 } mutex_t;
 
-void mutex_init(void *instance, mutex_t *mutex);
-
+void mutex_init(mutex_t *mutex);
+void mutex_init_unlocked(mutex_t *mutex);
 void mutex_lock(mutex_t *mutex);
-
 int mutex_try_lock(mutex_t *mutex);
-
 void mutex_unlock(mutex_t *mutex);
-
-void mutex_unlock_and_sleeping(mutex_t *mutex);
-
-int mutex_lock_timeout(void *instance, mutex_t *mutex, uint32_t timeout);
+void mutex_unlock_and_sleep(mutex_t *mutex);
 
 #ifdef __cplusplus
 }
