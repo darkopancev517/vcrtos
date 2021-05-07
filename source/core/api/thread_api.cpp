@@ -79,6 +79,12 @@ void thread_exit()
     scheduler->exit();
 }
 
+void thread_terminate(kernel_pid_t pid)
+{
+    ThreadScheduler *scheduler = &ThreadScheduler::get();
+    scheduler->terminate(pid);
+}
+
 int thread_pid_is_valid(kernel_pid_t pid)
 {
     return Thread::is_pid_valid(pid);

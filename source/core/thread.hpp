@@ -141,6 +141,7 @@ public:
     int wakeup_thread(kernel_pid_t pid);
     void yield();
     void exit();
+    void terminate(kernel_pid_t pid);
     static void yield_higher_priority_thread();
     static const char *thread_status_to_string(thread_status_t status);
 #if VCRTOS_CONFIG_THREAD_FLAGS_ENABLE

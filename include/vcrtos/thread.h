@@ -98,6 +98,7 @@ void thread_scheduler_run();
 void thread_scheduler_set_status(thread_t *thread, thread_status_t status);
 void thread_scheduler_switch(uint8_t priority);
 void thread_exit();
+void thread_terminate(kernel_pid_t pid);
 int thread_pid_is_valid(kernel_pid_t pid);
 void thread_yield();
 thread_t *thread_current();

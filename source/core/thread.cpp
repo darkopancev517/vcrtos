@@ -399,6 +399,21 @@ void ThreadScheduler::exit()
     // Note: user need to call cpu_switch_context_exit() after this function
 }
 
+void ThreadScheduler::terminate(kernel_pid_t pid)
+{
+    if (sched_active_pid == pid)
+    {
+        exit();
+        return;
+    }
+    unsigned irqmask = cpu_irq_disable();
+    Thread *thread = threads_container[pid];
+    threads_container[pid] = nullptr;
+    numof_threads_in_container -= 1;
+    set_thread_status(thread, THREAD_STATUS_STOPPED);
+    cpu_irq_restore(irqmask);
+}
+
 const char *ThreadScheduler::thread_status_to_string(thread_status_t status)
 {
     const char *retval;
