@@ -18,6 +18,7 @@
 #include <vcrtos/thread.h>
 
 #include "core/thread.hpp"
+#include "core/code_utils.h"
 
 using namespace vc;
 
@@ -152,4 +153,24 @@ uint32_t thread_get_schedules_stat(kernel_pid_t pid)
 {
     ThreadScheduler *scheduler = &ThreadScheduler::get();
     return scheduler->get_thread_schedules_stat(pid);
+}
+
+void thread_add_to_list(list_node_t *list, thread_t *thread)
+{
+    uint16_t my_prio = thread->priority;
+    list_node_t *new_node = (list_node_t *)&thread->runqueue_entry;
+
+    while (list->next)
+    {
+        thread_t *list_entry = container_of((list_node_t *)list->next,
+                                            thread_t,
+                                            runqueue_entry);
+
+        if (list_entry->priority > my_prio)
+            break;
+
+        list = list->next;
+    }
+    new_node->next = list->next;
+    list->next = new_node;
 }

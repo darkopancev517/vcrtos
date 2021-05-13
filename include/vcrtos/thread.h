@@ -110,6 +110,7 @@ uint64_t thread_get_runtime_ticks(kernel_pid_t pid);
 const char *thread_status_to_string(thread_status_t status);
 uintptr_t thread_measure_stack_free(char *stack);
 uint32_t thread_get_schedules_stat(kernel_pid_t pid);
+void thread_add_to_list(list_node_t *list, thread_t *thread);
 
 char *thread_arch_stack_init(thread_handler_func_t func, void *arg, void *stack_start, int size);
 void thread_arch_stack_print();
